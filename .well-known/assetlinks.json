@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "io.github.hotchoco.distribute",
+    "sha256_cert_fingerprints": ["62:95:11:02:39:00:3A:62:0A:26:93:14:CB:B4:65:4E:69:F2:AF:E4:70:8B:20:A6:30:FA:57:38:9B:A4:73:B5"]
+  }
+}]
