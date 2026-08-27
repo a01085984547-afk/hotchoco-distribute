@@ -1,0 +1,33 @@
+{
+  "id": "./",
+  "name": "HotChocoCre 크레스티드 매니저",
+  "short_name": "HotChocoCre",
+  "description": "크레스티드 게코(크레) 개체, 메이팅, 산란/알, 해칭개체와 혈통(근친) 정보를 관리하는 개인용 사육 관리 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F1E3",
+  "theme_color": "#2B1810",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
