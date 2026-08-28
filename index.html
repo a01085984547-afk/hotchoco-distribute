@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-28 23:50 KST -->
+<!-- BUILD_VERSION: 2026-08-29 00:05 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -1835,6 +1835,12 @@ function toggleFemaleOnlyFields(prefix){
   if(!genderSel || !section) return;
   section.style.display = genderSel.value==='암컷' ? 'block' : 'none';
 }
+function updateAdoptionDateLabel(){
+  const sel = document.getElementById('ownOriginTypeField');
+  const label = document.getElementById('adoptionDateLabel');
+  if(!sel || !label) return;
+  label.textContent = sel.value==='해칭' ? '개체 등록일' : '입양일';
+}
 
 /* ---------------- 개체 사진(최대 3장, 대표 사진 지정) ---------------- */
 let formPhotoState = { photos: [], primaryId: null };
@@ -2289,7 +2295,7 @@ function openIndividualDetail(id){
       ${ind.provenStatus==='예'?`<span class="chip">프루븐</span>`:''}
       ${ind.status?`<span class="chip ${ind.status==='보유'?'':'muted'}">${esc(ind.status)}</span>`:''}
     </div>
-    <div class="readonly-note">해칭일 ${esc(ind.hatchDate)||'미상'} · 출신 ${esc(ind.originType)||'-'}${ind.originCompany?' ('+esc(ind.originCompany)+')':''}</div>
+    <div class="readonly-note">해칭일 ${esc(ind.hatchDate)||'미상'} · 출신 ${esc(ind.originType)||'-'}${ind.originCompany?' ('+esc(ind.originCompany)+')':''}${ind.adoptionDate?` · ${ind.originType==='해칭'?'등록일':'입양일'} ${esc(ind.adoptionDate)}`:''}</div>
 
     <div class="form-divider">번식 관련 기록</div>
     <div class="card-datarow" style="border-top:none;">
@@ -2356,9 +2362,11 @@ function openIndividualForm(id){
         <label class="field"><span>모프(기본)</span>${buildMorphSelectHtml('own', data.morph||'')}</label>
         <label class="field"><span>헷(Het) 여부</span>${buildHetSelectHtml('own', data.morphHet||'')}</label>
         <label class="field"><span>점 여부</span><select name="dotStatus">${selOpts(['있음','없음','미상'],data.dotStatus)}</select></label>
-        <label class="field"><span>출신 구분</span><select name="originType">${selOpts(['외부 영입','해칭'],data.originType)}</select></label>
-        <label class="field full"><span>출신 업체</span><input name="originCompany" value="${esc(data.originCompany||'')}"></label>
+        <label class="field"><span>출신 구분</span><select name="originType" id="ownOriginTypeField" onchange="updateAdoptionDateLabel()">${selOpts(['외부 영입','해칭'],data.originType)}</select></label>
+        <label class="field"><span>출신 업체</span><input name="originCompany" value="${esc(data.originCompany||'')}"></label>
+        <label class="field"><span id="adoptionDateLabel">${data.originType==='해칭'?'개체 등록일':'입양일'}</span><input type="date" name="adoptionDate" value="${esc(data.adoptionDate||'')}"></label>
       </div>
+      <div class="readonly-note" style="margin-top:-8px;">입양(또는 등록)한 날짜를 적어두면, 나중에 문제가 생겼을 때 업체와 소통하거나 기록을 되짚어보기 좋아요.</div>
       <div id="ownFemaleOnlySection" style="display:${data.gender==='암컷'?'block':'none'};">
         <label class="field full"><span>최근 무정란 산란일 (메이팅 없이 혼자 낳은 경우)</span><input type="date" name="lastSoloInfertileLayDate" value="${esc(data.lastSoloInfertileLayDate||'')}"></label>
         <div class="readonly-note" style="margin-top:-8px;">메이팅 후 낳은 무정란은 알 탭에서 기록하면 자동으로 잡혀요. 이 칸은 메이팅 없이 혼자 배란·산란한 경우만 직접 적어두는 용도예요.</div>
@@ -3684,7 +3692,7 @@ async function confirmPromote(hatchId){
     morphPatterns: h.morphPatterns||[], morphColors: h.morphColors||[],
     dotStatus: h.dotStatus||'미상', weightLog: h.weightLog||[],
     photos: h.photos||[], primaryPhotoId: h.primaryPhotoId||null,
-    originType:'해칭', originCompany:'',
+    originType:'해칭', originCompany:'', adoptionDate: todayISO(),
     sireId: h.sireId||null, sireName: h.sireName||'',
     sireHatchDate:'', sireMorph:'', sireCompany:'',
     damId: h.damId||null, damName: h.damName||'',
@@ -4318,7 +4326,7 @@ function renderSoldTab(){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-28 23:50 KST';
+const APP_BUILD_VERSION = '2026-08-29 00:05 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
