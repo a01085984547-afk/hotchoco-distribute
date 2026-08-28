@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-28 23:34 KST -->
+<!-- BUILD_VERSION: 2026-08-28 23:43 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -2114,6 +2114,12 @@ function sortedWeightLog(entity){
   return (entity.weightLog||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 }
 function latestWeightEntry(entity){
+  /* 해칭개체가 개체로 승격됐으면, 이제 승격된 개체 쪽 체중 기록이 최신 정보 - 카드/칩 등
+     어디서 조회하든 이걸 한 곳에서 처리해서 항상 연결된 최신값을 보여준다 */
+  if(entity && entity.promotedToId){
+    const promoted = state.individuals.find(i=>i.id===entity.promotedToId);
+    if(promoted) return latestWeightEntry(promoted);
+  }
   const log = sortedWeightLog(entity);
   return log.length ? log[0] : null;
 }
@@ -2175,6 +2181,15 @@ async function deleteWeightLogEntry(kind, id, entryId){
   if(kind==='individual') openIndividualDetail(id); else openHatchlingDetail(id);
 }
 function renderWeightLogSectionContent(kind, entity){
+  /* 해칭개체가 개체로 승격됐으면, 이제 같은 개체니까 승격된 개체 쪽 체중 기록을 그대로 보여주고
+     거기에 기록되게 한다 - 승격 후에 어느 화면에서 입력하든 하나로 이어지게 하기 위함 */
+  if(kind==='hatchling' && entity.promotedToId){
+    const promoted = state.individuals.find(i=>i.id===entity.promotedToId);
+    if(promoted){
+      return renderWeightLogSectionContent('individual', promoted) +
+        `<div class="readonly-note" style="margin-top:8px;">이 해칭개체는 개체 '${esc(promoted.name)}'(으)로 등록돼서, 체중 기록도 그 개체 쪽과 함께 관리돼요.</div>`;
+    }
+  }
   const log = sortedWeightLog(entity);
   let html = `<button type="button" class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="openWeightLogAddForm('${kind}','${entity.id}')">+ 체중 기록 추가</button>`;
   if(log.length===0){
@@ -4297,7 +4312,7 @@ function renderSoldTab(){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-28 23:34 KST';
+const APP_BUILD_VERSION = '2026-08-28 23:43 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
