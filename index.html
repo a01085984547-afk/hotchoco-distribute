@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-28 17:28 KST -->
+<!-- BUILD_VERSION: 2026-08-28 23:34 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -68,6 +68,11 @@ main{padding:16px 16px 100px;}
 .chip.alt{background:var(--amber-soft);color:var(--amber);}
 .chip.muted{background:#EEEBDF;color:var(--ink-soft);}
 .chip.danger{background:var(--danger-soft);color:var(--danger);}
+.chip.stage-baby{background:#FFF3D6;color:#8A6D1F;}
+.chip.stage-juvenile{background:#E4EFE4;color:#3E7C55;}
+.chip.stage-subadult{background:#F3E3C8;color:#B97A3D;}
+.chip.stage-adult{background:#E7DEF5;color:#5B3E8A;}
+.chip.stage-unknown{background:#EEEBDF;color:var(--ink-soft);}
 .card-sub{font-size:12.5px;color:var(--ink-soft);margin-top:8px;line-height:1.5;}
 .compact-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .compact-row{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);min-width:0;}
@@ -1526,6 +1531,7 @@ function renderIndividualListBody(items){
       ${(i.morphColors||[]).map(c=>`<span class="chip muted">${esc(c)}</span>`).join('')}
       ${i.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
       ${(()=>{const w=latestWeightEntry(i);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
+      <span class="chip ${growthStageChipClass(growthStageOfIndividual(i))}">${esc(growthStageOfIndividual(i))}</span>
       ${i.status?`<span class="chip ${i.status==='보유'?'':'muted'}">${esc(i.status)}</span>`:''}
       ${i.breeding==='예'?`<span class="chip">브리딩</span>`:''}
       ${i.provenStatus==='예'?`<span class="chip">프루븐</span>`:''}
@@ -1668,6 +1674,7 @@ function renderHatchlingListBody(items){
       ${(h.morphColors||[]).map(c=>`<span class="chip muted">${esc(c)}</span>`).join('')}
       ${h.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
       ${(()=>{const w=latestWeightEntry(h);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
+      <span class="chip ${growthStageChipClass(growthStageOfHatchling(h))}">${esc(growthStageOfHatchling(h))}</span>
       ${h.promotedToId?`<span class="chip">개체 등록됨</span>`:''}
       ${h.price?`<span class="chip muted">${fmtMoney(h.price)}</span>`:''}
     </div>
@@ -2110,6 +2117,28 @@ function latestWeightEntry(entity){
   const log = sortedWeightLog(entity);
   return log.length ? log[0] : null;
 }
+/* 성장 단계 자동 판정 - 몸무게 기준(g): 베이비 0~10 / 아성체 10.1~20 / 준성체 20.1~30 / 성체 30 초과 */
+function growthStageFromWeight(grams){
+  const g = parseFloat(grams);
+  if(isNaN(g)) return null;
+  if(g<=10) return '베이비';
+  if(g<=20) return '아성체';
+  if(g<=30) return '준성체';
+  return '성체';
+}
+/* 개체: 몸무게 기록이 없으면 나이로 짐작하지 않고 정직하게 '미상' */
+function growthStageOfIndividual(ind){
+  const w = latestWeightEntry(ind);
+  return (w ? growthStageFromWeight(w.grams) : null) || '미상';
+}
+/* 해칭개체: 몸무게 기록이 없어도 해칭 자체가 갓 태어났다는 증거라 기본이 '베이비' */
+function growthStageOfHatchling(h){
+  const w = latestWeightEntry(h);
+  return (w ? growthStageFromWeight(w.grams) : null) || '베이비';
+}
+function growthStageChipClass(stage){
+  return { '베이비':'stage-baby', '아성체':'stage-juvenile', '준성체':'stage-subadult', '성체':'stage-adult', '미상':'stage-unknown' }[stage] || 'stage-unknown';
+}
 function openWeightLogAddForm(kind, id){
   const body = `
     <form id="weight-log-form" onsubmit="event.preventDefault(); saveWeightLogEntry('${kind}','${id}');">
@@ -2235,6 +2264,7 @@ function openIndividualDetail(id){
       ${(ind.morphPatterns||[]).map(p=>`<span class="chip muted">${esc(p)}</span>`).join('')}
       ${(ind.morphColors||[]).map(c=>`<span class="chip muted">${esc(c)}</span>`).join('')}
       ${ind.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
+      <span class="chip ${growthStageChipClass(growthStageOfIndividual(ind))}">${esc(growthStageOfIndividual(ind))}</span>
       ${ind.provenStatus==='예'?`<span class="chip">프루븐</span>`:''}
       ${ind.status?`<span class="chip ${ind.status==='보유'?'':'muted'}">${esc(ind.status)}</span>`:''}
     </div>
@@ -3393,6 +3423,7 @@ function openHatchlingDetail(id){
       ${(h.morphPatterns||[]).map(p=>`<span class="chip muted">${esc(p)}</span>`).join('')}
       ${(h.morphColors||[]).map(cl=>`<span class="chip muted">${esc(cl)}</span>`).join('')}
       ${h.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
+      <span class="chip ${growthStageChipClass(growthStageOfHatchling(h))}">${esc(growthStageOfHatchling(h))}</span>
       ${h.status?`<span class="chip ${h.status==='보유'?'':'muted'}">${esc(h.status)}</span>`:''}
       ${h.promotedToId?`<span class="chip">개체 등록됨</span>`:''}
     </div>
@@ -4266,7 +4297,7 @@ function renderSoldTab(){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-28 17:28 KST';
+const APP_BUILD_VERSION = '2026-08-28 23:34 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
