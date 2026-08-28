@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-28 17:09 KST -->
+<!-- BUILD_VERSION: 2026-08-28 17:28 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -114,6 +114,10 @@ main{padding:16px 16px 100px;}
 
 .fab{position:fixed;bottom:24px;right:calc(50% - 320px + 20px);width:54px;height:54px;border-radius:50%;background:var(--pine);color:#F3EFDF;border:none;font-size:26px;box-shadow:0 6px 18px rgba(18,41,27,0.35);cursor:pointer;z-index:15;display:flex;align-items:center;justify-content:center;line-height:0;}
 @media (max-width:680px){.fab{right:20px;}}
+
+.scroll-top-btn{position:fixed;bottom:24px;left:calc(50% - 320px + 20px);width:46px;height:46px;border-radius:50%;background:var(--surface);color:var(--pine-deep);border:1px solid var(--border);font-size:20px;font-weight:700;box-shadow:0 4px 14px rgba(18,41,27,0.2);cursor:pointer;z-index:15;align-items:center;justify-content:center;line-height:0;display:none;opacity:0;transition:opacity .2s;}
+.scroll-top-btn.visible{display:flex;opacity:1;}
+@media (max-width:680px){.scroll-top-btn{left:20px;}}
 
 .modal-overlay{position:fixed;inset:0;background:rgba(18,29,20,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
 .modal{background:var(--surface);width:100%;max-width:640px;border-radius:20px 20px 0 0;max-height:92vh;overflow-y:auto;padding:18px 18px calc(18px + env(safe-area-inset-bottom));animation:slideup .18s ease-out;}
@@ -1263,10 +1267,27 @@ function render(){
     </header>
     <main id="main-content">${renderTabContent()}</main>
     ${renderFab()}
+    <button type="button" id="scroll-top-btn" class="scroll-top-btn" onclick="scrollToTop()" aria-label="맨 위로">↑</button>
   `;
   const activeTabBtn = app.querySelector('.tabbtn.active');
   if(activeTabBtn) activeTabBtn.scrollIntoView({inline:'center', block:'nearest'});
   setupSwipeNav();
+  setupScrollTopButton();
+}
+function scrollToTop(){
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+/* 스크롤 감지는 window에 딱 한 번만 붙이고(렌더할 때마다 새로 안 붙임), 버튼 자체는 매번 다시 그려지므로 그때그때 찾아서 토글한다 */
+function setupScrollTopButton(){
+  const btn = document.getElementById('scroll-top-btn');
+  if(btn) btn.classList.toggle('visible', window.scrollY > 400);
+  if(window.__scrollTopListenerAdded) return;
+  window.__scrollTopListenerAdded = true;
+  window.addEventListener('scroll', function(){
+    const b = document.getElementById('scroll-top-btn');
+    if(!b) return;
+    b.classList.toggle('visible', window.scrollY > 400);
+  }, {passive:true});
 }
 
 /* ---------------- 탭 화면 좌우 스와이프로 넘기기 ---------------- */
@@ -4245,7 +4266,7 @@ function renderSoldTab(){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-28 17:09 KST';
+const APP_BUILD_VERSION = '2026-08-28 17:28 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
