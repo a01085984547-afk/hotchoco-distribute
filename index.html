@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-28 15:09 KST -->
+<!-- BUILD_VERSION: 2026-08-28 15:51 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -202,6 +202,7 @@ main{padding:16px 16px 100px;}
 .egg-mini .dot{width:9px;height:9px;border-radius:50%;}
 .egg-mini .dot.fertile{background:var(--moss);}
 .egg-mini .dot.infertile{background:#D8D2BE;}
+.egg-mini .dot.stopped{background:var(--danger);}
 .egg-mini .dot.egg-warn{box-shadow:0 0 0 2px var(--danger);}
 .mating-log{font-size:11.5px;color:var(--ink-faint);margin-top:10px;}
 
@@ -220,6 +221,9 @@ main{padding:16px 16px 100px;}
 .egg.hatched .lbl{color:#2F7D4F;}
 .egg.infertile{background:#EAE6D6;border:1px solid #D8D2BE;opacity:.7;}
 .egg.overdue{background:linear-gradient(160deg,#F7E2DC 0%,#EFC3B6 100%);border:1px solid #E0A390;}
+.egg.stopped-egg{background:linear-gradient(160deg,#E8D6D0 0%,#D3AFA5 100%);border:1px solid #B98977;}
+.egg.stopped-egg .num{color:#6B2E1F;}
+.egg.stopped-egg .lbl{color:#7A2C1F;}
 .egg .num{font-family:var(--font-display);font-weight:700;font-size:19px;color:#6B4A17;}
 .egg.overdue .num{color:#7A2C1F;}
 .egg .lbl{font-size:8.5px;font-weight:700;color:#8A7A3E;margin-top:1px;}
@@ -631,7 +635,7 @@ function migrateBackfillBreedingProven(st){
     }
   });
   (st.clutches||[]).forEach(c=>{
-    if(c.egg1Status==='유정' || c.egg2Status==='유정'){
+    if(wasEverFertile(c.egg1Status) || wasEverFertile(c.egg2Status)){
       if(markProven((st.individuals||[]).find(i=>i.id===c.damId))) changed = true;
       if(markProven((st.individuals||[]).find(i=>i.id===c.sireId))) changed = true;
     }
@@ -804,6 +808,19 @@ const BASE_MORPHS = ['노멀','루왁','루왁 릴리','릴리 세이블','릴�
 const PATTERN_TRAITS = ['바이','트라이','패턴리스','팬텀','달마시안','드리피','벅스킨','브린들','솔리드백','슈퍼달마시안','슈퍼스트라이프','엠티백','익스트림할리퀸','플레임','쿼드','풀핀','핀스트라이프','할리퀸','화이트스팟','화이트크라운','화이트포트홀','화이트핀'];
 const COLOR_TRAITS = ['다크','레드','블랙','스트로베리','옐로우','차콜','크림','크림시클','타이거','텐저린','할로윈','화이트'];
 const HET_OPTIONS = ['없음','헷아잔틱','헷초초'];
+/* 유/무정 상태 관련 - '중지'(발생하다 죽음)는 실제로는 유정이었다는 증거라 브리딩/프루븐 판정에는 유정과
+   똑같이 치지만, 더 이상 부화를 기다릴 대상은 아니라서 '대기 중' 계산에서는 뺀다. */
+function wasEverFertile(status){
+  return status==='유정' || status==='중지';
+}
+function isPendingHatch(status){
+  return status==='유정'; // 중지된 알은 더 이상 기다릴 게 없음
+}
+function eggDotClass(status){
+  if(status==='유정') return 'fertile';
+  if(status==='중지') return 'stopped';
+  return 'infertile';
+}
 /* 알 상태 - 두 가지 별개 시점을 구분해서 기록한다
    1) 산란 당시 껍데기 겉모양(도자기=정상 / 눈꽃알 / 골프공) - 낳을 때 한 번 정해지는 것
    2) 인큐베이션(보관) 중에 나중에 생기는 문제(함몰/곰팡이) - 시간이 지나며 발생할 수 있는 것 */
@@ -2577,20 +2594,23 @@ function renderMatingCard(m){
       rows = `<div class="readonly-note" style="margin:6px 0 10px;">아직 기록된 알이 없어요.</div>`;
     } else {
       cs.forEach(c=>{
-        const hasFertile = c.egg1Status==='유정' || c.egg2Status==='유정';
-        const pred = hasFertile ? predictHatchDates(c.layDate, c.incubationTemp||m.incubationTemp||DEFAULT_INCUBATION_TEMP) : null;
+        const anyPending = isPendingHatch(c.egg1Status) || isPendingHatch(c.egg2Status);
+        const everFertile = wasEverFertile(c.egg1Status) || wasEverFertile(c.egg2Status);
+        const anyStopped = c.egg1Status==='중지' || c.egg2Status==='중지';
+        const pred = anyPending ? predictHatchDates(c.layDate, c.incubationTemp||m.incubationTemp||DEFAULT_INCUBATION_TEMP) : null;
         let rightText;
         if(c.actualHatchCount) rightText = '해칭 '+c.actualHatchCount;
-        else if(!hasFertile) rightText = '무정';
-        else if(pred && pred.avgDate) rightText = '예정 '+fmtKo(pred.avgDate);
+        else if(!everFertile) rightText = '무정';
+        else if(anyPending && pred && pred.avgDate) rightText = '예정 '+fmtKo(pred.avgDate);
+        else if(anyStopped) rightText = '중지';
         else rightText = '-';
         const abnormalNotes = [...eggWarningLabels(c,1), ...eggWarningLabels(c,2)];
         rows += `<div class="clutch-row" onclick="openClutchForm('${c.id}', '${m.id}')">
           <div class="cnum">${esc(c.clutchNum)}차</div>
           <div class="cmid">
             <span class="egg-mini">
-              <span class="dot ${c.egg1Status==='유정'?'fertile':'infertile'} ${eggWarningLabels(c,1).length?'egg-warn':''}"></span>
-              <span class="dot ${c.egg2Status==='유정'?'fertile':'infertile'} ${eggWarningLabels(c,2).length?'egg-warn':''}"></span>
+              <span class="dot ${eggDotClass(c.egg1Status)} ${eggWarningLabels(c,1).length?'egg-warn':''}"></span>
+              <span class="dot ${eggDotClass(c.egg2Status)} ${eggWarningLabels(c,2).length?'egg-warn':''}"></span>
             </span>
             &nbsp;${esc(c.layDate)||'-'}${abnormalNotes.length?` <span class="chip danger" style="padding:1px 7px;font-size:10px;">⚠️ ${esc(abnormalNotes.join('·'))}</span>`:''}
           </div>
@@ -2620,7 +2640,7 @@ function renderMatingCard(m){
       <div class="card-datarow">
         <div class="dcell"><div class="lbl">${activityLabel}</div><div class="val">${activityDate?esc(activityDate):'-'}</div></div>
         <div class="dcell"><div class="lbl">${ddayLabel}</div><div class="val">${ddayValue}</div></div>
-        <div class="dcell"><div class="lbl">누적 클러치</div><div class="val">${cs.filter(c=>c.egg1Status==='유정'||c.egg2Status==='유정').length}건</div></div>
+        <div class="dcell"><div class="lbl">누적 클러치</div><div class="val">${cs.filter(c=>wasEverFertile(c.egg1Status)||wasEverFertile(c.egg2Status)).length}건</div></div>
       </div>
     </div>
     ${detail}
@@ -2807,13 +2827,13 @@ function openClutchForm(id, matingId){
       <div class="form-grid">
         <label class="field"><span>산란 차수</span><input type="number" name="clutchNum" value="${esc(data.clutchNum||'')}" min="1"></label>
         <label class="field"><span>산란일</span><input type="date" name="layDate" value="${esc(data.layDate||'')}" onchange="updateClutchHatchPreview()"></label>
-        <label class="field"><span>알1 유/무정</span><select name="egg1Status">${selOpts(['유정','무정','미상'],data.egg1Status)}</select></label>
+        <label class="field"><span>알1 유/무정</span><select name="egg1Status">${selOpts(['유정','무정','중지','미상'],data.egg1Status)}</select></label>
         <label class="field"><span>알1 산란 시 상태</span><select name="egg1Condition">${selOpts(EGG_CONDITION_OPTIONS,data.egg1Condition||'정상(도자기)')}</select></label>
-        <label class="field"><span>알2 유/무정</span><select name="egg2Status">${selOpts(['유정','무정','미상','없음'],data.egg2Status)}</select></label>
+        <label class="field"><span>알2 유/무정</span><select name="egg2Status">${selOpts(['유정','무정','중지','미상','없음'],data.egg2Status)}</select></label>
         <label class="field"><span>알2 산란 시 상태</span><select name="egg2Condition">${selOpts(EGG_CONDITION_OPTIONS,data.egg2Condition||'정상(도자기)')}</select></label>
         <label class="field"><span>인큐베이션 온도(°C)</span><input type="number" name="incubationTemp" step="0.1" value="${data.incubationTemp||DEFAULT_INCUBATION_TEMP}" onchange="updateClutchHatchPreview()"></label>
       </div>
-      <div class="readonly-note" style="margin-top:-8px;">"산란 시 상태"는 알을 낳을 때 껍데기 겉모양이에요(도자기처럼 매끈하면 정상). 유/무정 여부랑은 별개 정보예요.</div>
+      <div class="readonly-note" style="margin-top:-8px;">"산란 시 상태"는 알을 낳을 때 껍데기 겉모양이에요(도자기처럼 매끈하면 정상). 유/무정 여부랑은 별개 정보예요. "중지"는 유정이었다가 발생 도중 죽은 경우예요.</div>
       <div id="clutch-hatch-preview"></div>
 
       <div class="form-divider">인큐베이션 중 문제 발생 (보관 중 나중에 생긴 경우)</div>
@@ -2862,7 +2882,7 @@ async function saveClutch(id, matingId){
   }
   /* 유정란은 그 알을 낳은 암컷·수컷 둘 다 실제로 증명(프루븐)됐다는 뜻 - 수컷도 정자가 없는 경우가
      있어서, 메이팅만으로는 증명이 아니고 실제 유정란이 나와야 프루븐으로 올림 */
-  if(obj.egg1Status==='유정' || obj.egg2Status==='유정'){
+  if(wasEverFertile(obj.egg1Status) || wasEverFertile(obj.egg2Status)){
     markProven(state.individuals.find(i=>i.id===damIdForBump));
     markProven(state.individuals.find(i=>i.id===sireIdForBump));
   }
@@ -2939,7 +2959,7 @@ function renderEggTab(){
     </div>
   </div>`;
 
-  const matingIds = [...new Set(state.clutches.filter(c=>c.egg1Status==='유정'||c.egg2Status==='유정').map(c=>c.matingId).filter(Boolean))];
+  const matingIds = [...new Set(state.clutches.filter(c=>wasEverFertile(c.egg1Status)||wasEverFertile(c.egg2Status)).map(c=>c.matingId).filter(Boolean))];
   if(matingIds.length===0){
     html += `<div class="empty-state"><div class="dotrow"><span></span><span></span><span></span><span></span><span></span></div><p>등록된 알 기록이 없어요.</p></div>`;
     return html;
@@ -3003,7 +3023,7 @@ function renderEggGroupCard(g){
     if(c.egg2Status==='유정' && !hatchlingForEgg(c.id,'B')) n++;
     return sum + n;
   }, 0);
-  const fertileClutchCount = cs.filter(c=>c.egg1Status==='유정'||c.egg2Status==='유정').length;
+  const fertileClutchCount = cs.filter(c=>wasEverFertile(c.egg1Status)||wasEverFertile(c.egg2Status)).length;
   const activityLabel = activity && activity.source==='cohabit' ? '최근 합사일' : '최근 메이팅일';
   const activityDate = activity ? activity.date : null;
 
@@ -3015,14 +3035,16 @@ function renderEggGroupCard(g){
       [['egg1Status','A',1],['egg2Status','B',2]].forEach(([field,label,num])=>{
         const st = c[field];
         if(st==='없음') return;
-        const fertile = st==='유정';
-        const hatchling = fertile ? hatchlingForEgg(c.id, label) : null;
+        const pending = isPendingHatch(st);
+        const stopped = st==='중지';
+        const hatchling = pending ? hatchlingForEgg(c.id, label) : null;
         const days = c.layDate ? daysBetween(c.layDate, todayISO()) : null;
         const pred = predictHatchDays(c.incubationTemp||DEFAULT_INCUBATION_TEMP);
-        const overdue = !hatchling && fertile && pred.max!==null && days!==null && days>pred.max;
+        const overdue = !hatchling && pending && pred.max!==null && days!==null && days>pred.max;
         const warnings = eggWarningLabels(c, num);
         let cls, num2, lbl2;
-        if(!fertile){ cls='infertile'; num2='×'; lbl2='무정'; }
+        if(stopped){ cls='stopped-egg'; num2='†'; lbl2='중지'; }
+        else if(!pending){ cls='infertile'; num2='×'; lbl2='무정'; }
         else if(hatchling){ cls='hatched'; num2=hatchling.incubationDays||'✓'; lbl2='완료'; }
         else if(overdue){ cls='overdue'; num2=days; lbl2='D+'; }
         else { cls='fertile'; num2=days!==null?days:'-'; lbl2='D+'; }
@@ -3058,7 +3080,7 @@ function openEggDetail(clutchId, eggNum){
   const incubationIssue = (eggNum===1 ? c.egg1IncubationIssue : c.egg2IncubationIssue) || '없음';
   const warnings = eggWarningLabels(c, eggNum);
   const label = eggNum===1 ? 'A' : 'B';
-  const fertile = status==='유정';
+  const fertile = isPendingHatch(status);
   const hatchling = fertile ? hatchlingForEgg(clutchId, label) : null;
   const days = c.layDate ? daysBetween(c.layDate, todayISO()) : null;
   const temp = c.incubationTemp || DEFAULT_INCUBATION_TEMP;
@@ -3075,6 +3097,12 @@ function openEggDetail(clutchId, eggNum){
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-block" onclick="openHatchlingForm('${hatchling.id}');">해칭개체 정보 보기/수정 →</button>
+      </div>`;
+  } else if(status==='중지'){
+    resultBlock = `
+      <div class="bloodline-banner danger" style="margin-top:12px;">이 알은 유정이었지만 발생 도중 중지되어 부화하지 못했어요.</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-block" onclick="openClutchForm('${c.id}');">클러치 정보 수정 →</button>
       </div>`;
   } else if(!fertile){
     resultBlock = `
@@ -4205,7 +4233,7 @@ function renderSoldTab(){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-28 15:09 KST';
+const APP_BUILD_VERSION = '2026-08-28 15:51 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
