@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-28 16:58 KST -->
+<!-- BUILD_VERSION: 2026-08-28 17:09 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -249,6 +249,8 @@ main{padding:16px 16px 100px;}
 ===================================================================== */
 
 const STORAGE_KEY = 'hotchoco_data_v2';
+/* 개체·메이팅·알·해칭개체 고유번호 접두사 - 배포용은 빌드할 때 다른 값(예: CR)으로 바뀜 */
+const ID_PREFIX = 'CR';
 
 let state = null;
 let currentTab = 'dashboard';
@@ -484,9 +486,9 @@ function migrateLegacyMorphs(st){
 
 /* ---------------- 개체 ID: 성별 기반 (수컷 M / 암컷 F / 미구분 U) ---------------- */
 function genderIdPrefix(gender){
-  if(gender==='수컷') return 'HCC-M-';
-  if(gender==='암컷') return 'HCC-F-';
-  return 'HCC-U-';
+  if(gender==='수컷') return ID_PREFIX+'-M-';
+  if(gender==='암컷') return ID_PREFIX+'-F-';
+  return ID_PREFIX+'-U-';
 }
 
 /* 예전 HCC-E-xxxx 개체 ID를 성별 기반 ID로 일괄 전환하고, 다른 곳에서의 참조(부모ID, 메이팅/클러치/해칭개체의 dam/sireId, 승급연결)까지 전부 갱신한다. */
@@ -528,9 +530,9 @@ function migrateIndividualIdsToGenderPrefix(st){
   return true;
 }
 
-/* 개체 ID의 성별 접두사(HCC-M-/HCC-F-/HCC-U-)를 반환 */
+/* 개체 ID의 성별 접두사(예: CR-M-/CR-F-/CR-U-)를 반환 */
 function idGenderPrefixOf(id){
-  const m = id && id.match(/^HCC-[A-Z]+-/);
+  const m = id && id.match(new RegExp('^'+ID_PREFIX+'-[A-Z]+-'));
   return m ? m[0] : null;
 }
 
@@ -2292,7 +2294,7 @@ function openIndividualForm(id){
       <div class="readonly-note" id="ownAgeNote" style="margin-top:-8px;">${data.hatchDate?`현재 나이: ${ageLabel(data.hatchDate)}`:''}</div>
       <div class="field full">${buildCollapsibleChipGroup('ownPatterns', '패턴', PATTERN_TRAITS, data.morphPatterns||[])}</div>
       <div class="field full">${buildCollapsibleChipGroup('ownColors', '컬러/트레잇', COLOR_TRAITS, data.morphColors||[])}</div>
-      <div class="readonly-note">${isNew?'저장하면 개체 ID가 자동으로 부여돼요 (수컷 HCC-M-0001 / 암컷 HCC-F-0001 형식).':`개체 ID: ${esc(data.id)} (자동 부여됨, 변경 불가)`}</div>
+      <div class="readonly-note">${isNew?`저장하면 개체 ID가 자동으로 부여돼요 (수컷 ${ID_PREFIX}-M-0001 / 암컷 ${ID_PREFIX}-F-0001 형식).`:`개체 ID: ${esc(data.id)} (자동 부여됨, 변경 불가)`}</div>
       ${!isNew?`<button type="button" class="btn btn-ghost btn-block" style="margin-bottom:12px;" onclick="openPedigreeTreeModal('IND:${data.id}')">🌳 가계도 보기</button>`:''}
       ${(!isNew && data.id && idGenderPrefixOf(data.id)!==genderIdPrefix(data.gender)) ? `
         <div class="bloodline-banner warning">⚠️ 현재 성별(${esc(data.gender)})과 ID 접두사가 안 맞아요. ID는 지우고 새로 등록하지 않아도, 아래 버튼으로 안전하게 바꿀 수 있어요.</div>
@@ -2768,7 +2770,7 @@ async function saveMating(id){
       alert('메이팅 날짜나 합사 시작일 중 하나는 입력해주세요.');
       return;
     }
-    obj.id = nextEntityId('HCC-P-', state.matings, 4);
+    obj.id = nextEntityId(ID_PREFIX+'-P-', state.matings, 4);
     obj.matingLog = matingDate ? [matingDate] : [];
     if(cohabitDate){
       obj.cohabitLog = [{ id:'coh'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), startDate: cohabitDate, endDate: null }];
@@ -2885,7 +2887,7 @@ async function saveClutch(id, matingId){
     obj.damId = mating?mating.damId:''; obj.damName = mating?mating.damName:'';
     obj.sireId = mating?mating.sireId:''; obj.sireName = mating?mating.sireName:'';
     const yy = currentYY();
-    obj.id = nextEntityId('HCC-C'+yy+'-', state.clutches, 3);
+    obj.id = nextEntityId(ID_PREFIX+'-C'+yy+'-', state.clutches, 3);
     state.clutches.push(obj);
     damIdForBump = obj.damId; sireIdForBump = obj.sireId;
   }
@@ -3540,7 +3542,7 @@ async function saveHatchling(id){
     Object.assign(item, obj);
   } else {
     const yy = currentYY();
-    obj.id = nextEntityId('HCC-H'+yy+'-', state.hatchlings, 4);
+    obj.id = nextEntityId(ID_PREFIX+'-H'+yy+'-', state.hatchlings, 4);
     obj.promotedToId = null;
     state.hatchlings.push(obj);
   }
@@ -3580,7 +3582,7 @@ function promoteHatchling(hatchId){
   if(!h) return;
   const genderUnknown = h.gender==='미구분';
   const warning = genderUnknown ? `
-    <div class="bloodline-banner warning">⚠️ 아직 성별이 '미구분'이에요. 이대로 등록하면 개체 ID가 <b>HCC-U-</b>로 부여되고, 나중에 성별을 알아내도 ID는 자동으로 안 바뀌어요.</div>
+    <div class="bloodline-banner warning">⚠️ 아직 성별이 '미구분'이에요. 이대로 등록하면 개체 ID가 <b>${ID_PREFIX}-U-</b>로 부여되고, 나중에 성별을 알아내도 ID는 자동으로 안 바뀌어요.</div>
     <button type="button" class="btn btn-ghost btn-block" style="margin-bottom:10px;" onclick="openHatchlingForm('${hatchId}');">먼저 성별부터 정하러 가기 →</button>
   ` : '';
   const body = `
@@ -4243,7 +4245,7 @@ function renderSoldTab(){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-28 16:58 KST';
+const APP_BUILD_VERSION = '2026-08-28 17:09 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
