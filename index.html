@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-28 15:51 KST -->
+<!-- BUILD_VERSION: 2026-08-28 16:58 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -619,6 +619,14 @@ function migrateMainToMainSub(st){
   (st.hatchlings||[]).forEach(h=>{ if(h.main==='예'){ h.main='메인'; changed=true; } });
   return changed;
 }
+/* '메인/서브 여부'에서 '아니오' 선택지를 없앴다 - 킵 여부'아니오'랑 의미가 겹쳐서 중복이었음.
+   기존에 '아니오'로 저장돼있던 값은 '보류'로 정리한다. */
+function migrateMainNoToHold(st){
+  let changed = false;
+  (st.individuals||[]).forEach(i=>{ if(i.main==='아니오'){ i.main='보류'; changed=true; } });
+  (st.hatchlings||[]).forEach(h=>{ if(h.main==='아니오'){ h.main='보류'; changed=true; } });
+  return changed;
+}
 /* 브리딩/프루븐 자동연동 규칙이 생기기 전부터 있던 과거 메이팅·유정란 기록도
    소급 적용한다(매번 실행해도 안전 - bumpBreedingLevel은 등급을 올리기만 함). */
 function migrateBackfillBreedingProven(st){
@@ -692,9 +700,10 @@ async function loadState(){
   const migratedIds = migrateIndividualIdsToGenderPrefix(state);
   const migratedSaleLabel = migrateSaleStatusLabel(state);
   const migratedMain = migrateMainToMainSub(state);
+  const migratedMainNo = migrateMainNoToHold(state);
   const migratedBreeding = migrateBackfillBreedingProven(state);
   const migratedBreedingReset = migrateResetBreedingForEndedMatings(state);
-  if(fromSeed || migratedMorphs || migratedIds || migratedSaleLabel || migratedMain || migratedBreeding || migratedBreedingReset){ await saveState(); }
+  if(fromSeed || migratedMorphs || migratedIds || migratedSaleLabel || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset){ await saveState(); }
 }
 async function saveState(){
   await storageSet(STORAGE_KEY, JSON.stringify(state));
@@ -2260,7 +2269,7 @@ function openIndividualDetail(id){
 function openIndividualForm(id){
   const item = id ? state.individuals.find(i=>i.id===id) : null;
   const isNew = !item;
-  const data = item || {gender:'미구분', originType:'외부 영입', dotStatus:'미상', keep:'예', breeding:'아니오', main:'아니오', status:'보유'};
+  const data = item || {gender:'미구분', originType:'외부 영입', dotStatus:'미상', keep:'예', breeding:'아니오', main:'보류', status:'보유'};
 
   const body = `
     <form id="individual-form" onsubmit="event.preventDefault(); saveIndividual('${id||''}');">
@@ -2333,7 +2342,7 @@ function openIndividualForm(id){
         <label class="field"><span>킵 여부</span><select name="keep">${selOpts(['예','아니오','보류'],data.keep)}</select></label>
         <label class="field"><span>브리딩 여부</span><select name="breeding">${selOpts(['예','아니오','보류'],data.breeding)}</select></label>
         <label class="field"><span>프루븐 여부</span><select name="provenStatus">${selOpts(['예','아니오'],data.provenStatus||'아니오')}</select></label>
-        <label class="field"><span>메인/서브 여부</span><select name="main">${selOpts(['메인','서브','아니오','보류'],data.main)}</select></label>
+        <label class="field"><span>메인/서브 여부</span><select name="main">${selOpts(['메인','서브','보류'],data.main)}</select></label>
         <label class="field"><span>현재 상태</span><select name="status" id="ownStatusField" onchange="toggleSaleSection('own')">${selOpts(['보유','분양 중','분양 완료','사망','기타'],data.status)}</select></label>
         <label class="field"><span>분양가</span><input type="text" inputmode="numeric" name="salePrice" value="${formatNumberWithCommas(data.salePrice)}" oninput="onPriceInputFormat(this)" placeholder="0"></label>
       </div>
@@ -3468,7 +3477,7 @@ function openHatchlingForm(id, prefill){
         <label class="field"><span>분양가</span><input type="text" inputmode="numeric" name="price" value="${formatNumberWithCommas(data.price)}" oninput="onPriceInputFormat(this)" placeholder="0"></label>
         <label class="field"><span>킵 여부</span><select name="keep">${selOpts(['예','아니오','보류'],data.keep)}</select></label>
         <label class="field"><span>브리딩 여부</span><select name="breeding">${selOpts(['예','아니오','보류'],data.breeding)}</select></label>
-        <label class="field"><span>메인/서브 여부</span><select name="main">${selOpts(['메인','서브','아니오','보류'],data.main)}</select></label>
+        <label class="field"><span>메인/서브 여부</span><select name="main">${selOpts(['메인','서브','보류'],data.main)}</select></label>
         <label class="field"><span>현재 상태</span><select name="status" id="hatchStatusField" onchange="toggleSaleSection('hatch')">${selOpts(['보유','분양 중','분양 완료','사망','기타'],data.status)}</select></label>
       </div>
       <div id="hatchSaleSection" style="display:${data.status==='분양 완료'?'block':'none'};">
@@ -3598,6 +3607,7 @@ async function confirmPromote(hatchId){
     name, gender: h.gender==='미구분' ? '미구분' : h.gender,
     hatchDate: h.hatchDate||'', morph: h.morph||'', morphHet: h.morphHet||'',
     morphPatterns: h.morphPatterns||[], morphColors: h.morphColors||[],
+    dotStatus: h.dotStatus||'미상', weightLog: h.weightLog||[],
     photos: h.photos||[], primaryPhotoId: h.primaryPhotoId||null,
     originType:'자가 해칭', originCompany:'',
     sireId: h.sireId||null, sireName: h.sireName||'',
@@ -3606,7 +3616,7 @@ async function confirmPromote(hatchId){
     damHatchDate:'', damMorph:'', damCompany:'',
     keep: h.keep==='보류'?'예':(h.keep||'예'),
     breeding: h.breeding==='보류'?'아니오':(h.breeding||'아니오'),
-    main: h.main==='보류'?'아니오':(h.main||'아니오'),
+    main: (h.main==='메인'||h.main==='서브') ? h.main : '보류',
     status:'보유',
     memo:`해칭개체 ${h.id}에서 등록됨`
   };
@@ -4233,7 +4243,7 @@ function renderSoldTab(){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-28 15:51 KST';
+const APP_BUILD_VERSION = '2026-08-28 16:58 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
