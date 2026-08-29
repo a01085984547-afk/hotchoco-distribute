@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-29 14:15 KST -->
+<!-- BUILD_VERSION: 2026-08-29 14:41 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -4492,21 +4492,34 @@ function gatherExportData(kind, id){
   if(!ent) return null;
   const morphLabel = formatMorphDisplayFull(ent.morph, ent.morphHet, ent.morphPatterns, ent.morphColors) || ent.morph || '모프 미정';
 
-  // 부모/조부모(2대)까지 - 링크된 개체는 그 개체 자신의 부모정보까지, 이름만 있으면 이름+모프
-  function parentInfo(side, of){
+  // 부모/조부모(2대)까지 - 링크된 개체는 그 개체 자신의 부모(조부모)의 모프까지, 이름만 있으면 이름+모프
+  function resolveSnapshot(entity, side){
     const idKey = side+'Id', nameKey = side+'Name', morphKey = side+'Morph', hetKey = side+'Het';
-    if(of[idKey]){
-      const p = state.individuals.find(i=>i.id===of[idKey]);
+    if(entity[idKey]){
+      const p = state.individuals.find(i=>i.id===entity[idKey]);
       if(p){
-        const pMorph = formatMorphDisplayFull(p.morph, p.morphHet, p.morphPatterns, p.morphColors) || p.morph || '';
-        return { name:p.name, morphLabel:pMorph, sireName:p.sireName||'', damName:p.damName||'' };
+        const m = formatMorphDisplayFull(p.morph, p.morphHet, p.morphPatterns, p.morphColors) || p.morph || '';
+        return { name:p.name, morphLabel:m };
       }
     }
-    if(of[nameKey]){
-      const nMorph = formatMorphDisplayFull(of[morphKey], of[hetKey], [], []) || of[morphKey] || '';
-      return { name:of[nameKey], morphLabel:nMorph, sireName:'', damName:'' };
+    if(entity[nameKey]){
+      const m = formatMorphDisplayFull(entity[morphKey], entity[hetKey], [], []) || entity[morphKey] || '';
+      return { name:entity[nameKey], morphLabel:m };
     }
     return null;
+  }
+  function parentInfo(side, of){
+    const p = resolveSnapshot(of, side);
+    if(!p) return null;
+    let sireGP = null, damGP = null;
+    if(of[side+'Id']){
+      const linkedP = state.individuals.find(i=>i.id===of[side+'Id']);
+      if(linkedP){
+        sireGP = resolveSnapshot(linkedP, 'sire');
+        damGP = resolveSnapshot(linkedP, 'dam');
+      }
+    }
+    return { name:p.name, morphLabel:p.morphLabel, sireGP, damGP };
   }
   const sire = parentInfo('sire', ent);
   const dam = parentInfo('dam', ent);
@@ -4581,10 +4594,10 @@ function renderCardCanvas(data, opts){
   if(opts.includePedigree){
     y += 26+22; // 제목 + 부 라인
     if(data.sire && data.sire.morphLabel) y += 18;
-    if(data.sire && (data.sire.sireName||data.sire.damName)) y += 20;
+    if(data.sire && (data.sire.sireGP||data.sire.damGP)) y += 20;
     y += 22; // 모 라인
     if(data.dam && data.dam.morphLabel) y += 18;
-    if(data.dam && (data.dam.sireName||data.dam.damName)) y += 20;
+    if(data.dam && (data.dam.sireGP||data.dam.damGP)) y += 20;
     y += 12+30;
   }
   if(opts.includeWeight && data.weightLog.length){
@@ -4643,10 +4656,12 @@ function renderCardCanvas(data, opts){
       ctx.fillStyle = '#B97A3D'; ctx.font='400 12.5px sans-serif';
       ctx.fillText(`  ${p.morphLabel}`, pad, y); y += 18;
     }
-    if(p && (p.sireName||p.damName)){
-      ctx.fillStyle = '#6E5D4C'; ctx.font='400 12.5px sans-serif';
+    if(p && (p.sireGP||p.damGP)){
       const gpLabel = label==='부' ? '조부/조모' : '외조부/외조모';
-      ctx.fillText(`  ㄴ ${gpLabel}: ${p.sireName||'미상'} / ${p.damName||'미상'}`, pad, y); y += 20;
+      const sireGPText = p.sireGP ? `${p.sireGP.name}${p.sireGP.morphLabel?'('+p.sireGP.morphLabel+')':''}` : '미상';
+      const damGPText = p.damGP ? `${p.damGP.name}${p.damGP.morphLabel?'('+p.damGP.morphLabel+')':''}` : '미상';
+      ctx.fillStyle = '#6E5D4C'; ctx.font='400 12.5px sans-serif';
+      ctx.fillText(`  ㄴ ${gpLabel}: ${sireGPText} / ${damGPText}`, pad, y); y += 20;
     }
   }
 
@@ -4717,7 +4732,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-29 14:15 KST';
+const APP_BUILD_VERSION = '2026-08-29 14:41 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
