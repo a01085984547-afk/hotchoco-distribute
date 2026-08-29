@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-29 15:00 KST -->
+<!-- BUILD_VERSION: 2026-08-29 18:19 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -3297,10 +3297,10 @@ function openEggDetail(clutchId, eggNum){
 ===================================================================== */
 
 /* ---------------- 개체/해칭개체 검색 선택창(모달) ---------------- */
-let entityPickerState = { side:null, query:'', typeFilter:'' };
+let entityPickerState = { side:null, query:'', typeFilter:'', genderFilter:'' };
 
 function openEntityPicker(side){
-  entityPickerState = { side, query:'', typeFilter:'' };
+  entityPickerState = { side, query:'', typeFilter:'', genderFilter:'' };
   renderEntityPickerModal();
 }
 function getEntityPickerList(){
@@ -3309,14 +3309,17 @@ function getEntityPickerList(){
   if(entityPickerState.typeFilter !== 'hatchling'){
     state.individuals.forEach(i=>{
       const morphLabel = formatMorphDisplayFull(i.morph, i.morphHet, i.morphPatterns, i.morphColors);
-      items.push({ key:'IND:'+i.id, kind:'individual', ent:i, label:i.name||i.id, sub:`${i.gender}${morphLabel?' · '+morphLabel:''}` });
+      items.push({ key:'IND:'+i.id, kind:'individual', ent:i, gender:i.gender, label:i.name||i.id, sub:`${i.gender}${morphLabel?' · '+morphLabel:''}` });
     });
   }
   if(entityPickerState.typeFilter !== 'individual'){
     state.hatchlings.forEach(h=>{
       const morphLabel = formatMorphDisplayFull(h.morph, h.morphHet, h.morphPatterns, h.morphColors) || '모프 미정';
-      items.push({ key:'HAT:'+h.id, kind:'hatchling', ent:h, label:morphLabel, sub:h.id });
+      items.push({ key:'HAT:'+h.id, kind:'hatchling', ent:h, gender:h.gender, label:morphLabel, sub:h.id });
     });
+  }
+  if(entityPickerState.genderFilter){
+    items = items.filter(it=>it.gender===entityPickerState.genderFilter);
   }
   if(q){
     items = items.filter(it=>(it.label||'').toLowerCase().includes(q) || (it.sub||'').toLowerCase().includes(q) || (it.ent.id||'').toLowerCase().includes(q));
@@ -3346,11 +3349,24 @@ function renderEntityPickerModal(){
       <button type="button" class="chip-toggle ${entityPickerState.typeFilter==='individual'?'chip-selected':''}" style="flex:1;" onclick="setEntityPickerType('individual')">개체</button>
       <button type="button" class="chip-toggle ${entityPickerState.typeFilter==='hatchling'?'chip-selected':''}" style="flex:1;" onclick="setEntityPickerType('hatchling')">해칭개체</button>
     </div>
+    <div class="searchbar">
+      <select onchange="setEntityPickerGender(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+        <option value="" ${entityPickerState.genderFilter===''?'selected':''}>전체보기</option>
+        <option value="수컷" ${entityPickerState.genderFilter==='수컷'?'selected':''}>수컷</option>
+        <option value="암컷" ${entityPickerState.genderFilter==='암컷'?'selected':''}>암컷</option>
+        <option value="미구분" ${entityPickerState.genderFilter==='미구분'?'selected':''}>미구분</option>
+      </select>
+    </div>
     <div id="entity-picker-list" style="max-height:52vh;overflow-y:auto;margin-top:6px;">
       ${renderEntityPickerListHtml(items)}
     </div>
   `;
   openModal('개체 선택', body);
+}
+function setEntityPickerGender(v){
+  entityPickerState.genderFilter = v;
+  const list = document.getElementById('entity-picker-list');
+  if(list) list.innerHTML = renderEntityPickerListHtml(getEntityPickerList());
 }
 function setEntityPickerQuery(v){
   entityPickerState.query = v;
@@ -4733,7 +4749,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-29 15:00 KST';
+const APP_BUILD_VERSION = '2026-08-29 18:19 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
