@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-29 14:41 KST -->
+<!-- BUILD_VERSION: 2026-08-29 15:00 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -4532,7 +4532,8 @@ function gatherExportData(kind, id){
     hatchDate: ent.hatchDate || '',
     ageLabel: ent.hatchDate ? ageLabel(ent.hatchDate) : '',
     sire, dam,
-    weightLog: sortedWeightLog( (kind==='hatchling' && ent.promotedToId) ? (state.individuals.find(i=>i.id===ent.promotedToId)||ent) : ent ).slice(0,8)
+    weightLog: sortedWeightLog( (kind==='hatchling' && ent.promotedToId) ? (state.individuals.find(i=>i.id===ent.promotedToId)||ent) : ent )
+      .filter(w=>w.date && daysBetween(w.date, todayISO())<=183) // 최근 6개월(약 183일)치만
   };
 }
 
@@ -4732,7 +4733,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-29 14:41 KST';
+const APP_BUILD_VERSION = '2026-08-29 15:00 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
