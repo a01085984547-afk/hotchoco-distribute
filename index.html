@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-29 13:56 KST -->
+<!-- BUILD_VERSION: 2026-08-29 14:04 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -3420,7 +3420,7 @@ function openAddExternalLineageRefForm(){
       <div class="readonly-note" style="margin-top:-8px;">등록된 개체 이름과 정확히 같으면 그 개체에 연결되고, 아니면 '이름만 아는 조상'으로 저장돼서 나중에 그 이름이 부모로 등장하는 곳마다 자동으로 이어져요.</div>
       <div class="form-grid">
         <label class="field full"><span>알려진 조상 이름</span><input name="ancestorName" required placeholder="예: 짐"></label>
-        <label class="field"><span>그 조상을 1세로 치면 대상은 몇 세인지</span><input type="number" name="generations" min="2" value="2" required></label>
+        <label class="field"><span>몇 세대인지</span><input type="number" name="generations" min="2" value="2" required></label>
         <label class="field"><span>부계/모계 (아는 경우만)</span><select name="side"><option value="">모름</option><option value="sire">부계 라인</option><option value="dam">모계 라인</option></select></label>
       </div>
       <div class="readonly-note" style="margin-top:-8px;">조상 본인이 1세, 그 자식이 2세, 손주가 3세... 예를 들어 "짐의 손주가 제트다"면 제트는 3세예요. 실제 위험도 계산에는 이 값에서 자동으로 1을 뺀 세대 차이(칸 수)가 쓰여요.</div>
@@ -4804,7 +4804,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-29 13:56 KST';
+const APP_BUILD_VERSION = '2026-08-29 14:04 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
