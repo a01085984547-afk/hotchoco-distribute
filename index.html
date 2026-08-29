@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-29 14:04 KST -->
+<!-- BUILD_VERSION: 2026-08-29 14:15 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -3535,11 +3535,12 @@ function renderPedigreeVisualNode(ent, sideLabel, gen, maxGen){
     }
     const nm = ent[side+'Name'];
     if(nm){
+      const namedMorphLabel = formatMorphDisplayFull(ent[side+'Morph'], ent[side+'Het'], [], []);
       childrenHtml += `<div class="ped-box ped-box-named">
         <div class="ped-avatar-placeholder">❔</div>
         <div class="ped-info">
           <div class="ped-name"><span class="ped-side">${esc(sideKo)}</span> ${esc(nm)}</div>
-          <div class="ped-morph">${ent[side+'Company']?esc(ent[side+'Company']):''} <span class="ped-tag">미등록</span></div>
+          <div class="ped-morph">${namedMorphLabel?esc(namedMorphLabel):''}${ent[side+'Company']?(namedMorphLabel?' · ':'')+esc(ent[side+'Company']):''} <span class="ped-tag">미등록</span></div>
         </div>
       </div>`;
     }
@@ -3922,6 +3923,10 @@ function initSync(){
     syncStatus = 'connecting';
     const ok = await loadFirebaseSDK();
     if(!ok){ syncStatus='error'; resolve(); return; }
+    /* individuals/matings/clutches/hatchlings 외에, 기기별 문서 동기화 대상이 아닌 로컬 전용
+       데이터(외부 혈통 참조 등)는 동기화 초기화 과정에서 state가 통째로 교체돼도 사라지지
+       않도록 미리 챙겨뒀다가 아래에서 다시 붙여준다. */
+    const localOnlyBackup = { externalLineageRefs: state.externalLineageRefs || [] };
     try{
       if(!firebase.apps || firebase.apps.length===0){
         firebase.initializeApp(cfg);
@@ -3952,6 +3957,7 @@ function initSync(){
               const oldState = JSON.parse(oldData.json);
               if(oldState && (oldState.individuals||[]).length + (oldState.matings||[]).length + (oldState.clutches||[]).length + (oldState.hatchlings||[]).length > 0){
                 state = oldState;
+                if(!state.externalLineageRefs) state.externalLineageRefs = localOnlyBackup.externalLineageRefs;
                 migratedFromOldDoc = true;
               }
             }
@@ -3970,6 +3976,7 @@ function initSync(){
           lastSyncedSnapshot[doc.id] = JSON.stringify(d.data);
         });
         state = newState;
+        state.externalLineageRefs = localOnlyBackup.externalLineageRefs;
       }
       syncStatus = 'synced';
       if(!resolved){ resolved = true; clearTimeout(timeout); resolve(); }
@@ -4476,23 +4483,28 @@ function renderSoldTab(){
 /* =====================================================================
    정보 카드 추출 (이미지 / PDF) - 분양자에게 주기 좋은 요약 카드
    기본정보 + (선택)가계도 + (선택)체중 성장기록 을 이미지 또는 PDF로 저장한다.
+   PDF는 jsPDF 기본 폰트가 한글을 지원하지 않아 텍스트로 직접 쓰면 깨지므로,
+   이미지(canvas)로 그린 뒤 그 이미지를 통째로 PDF 한 페이지에 넣는 방식을 쓴다.
 ===================================================================== */
 
 function gatherExportData(kind, id){
   const ent = kind==='individual' ? state.individuals.find(i=>i.id===id) : state.hatchlings.find(h=>h.id===id);
   if(!ent) return null;
   const morphLabel = formatMorphDisplayFull(ent.morph, ent.morphHet, ent.morphPatterns, ent.morphColors) || ent.morph || '모프 미정';
-  const photo = (ent.photos||[]).find(p=>p.id===ent.primaryPhotoId) || (ent.photos||[])[0] || null;
 
-  // 부모/조부모(2대)까지 - 링크된 개체는 그 개체 자신의 부모정보까지, 이름만 있으면 이름만
+  // 부모/조부모(2대)까지 - 링크된 개체는 그 개체 자신의 부모정보까지, 이름만 있으면 이름+모프
   function parentInfo(side, of){
-    const idKey = side+'Id', nameKey = side+'Name';
+    const idKey = side+'Id', nameKey = side+'Name', morphKey = side+'Morph', hetKey = side+'Het';
     if(of[idKey]){
       const p = state.individuals.find(i=>i.id===of[idKey]);
-      if(p) return { name:p.name, linked:true, sireName:p.sireName||'', damName:p.damName||'' };
+      if(p){
+        const pMorph = formatMorphDisplayFull(p.morph, p.morphHet, p.morphPatterns, p.morphColors) || p.morph || '';
+        return { name:p.name, morphLabel:pMorph, sireName:p.sireName||'', damName:p.damName||'' };
+      }
     }
     if(of[nameKey]){
-      return { name:of[nameKey], linked:false, sireName:'', damName:'' };
+      const nMorph = formatMorphDisplayFull(of[morphKey], of[hetKey], [], []) || of[morphKey] || '';
+      return { name:of[nameKey], morphLabel:nMorph, sireName:'', damName:'' };
     }
     return null;
   }
@@ -4506,9 +4518,6 @@ function gatherExportData(kind, id){
     gender: ent.gender || '미구분',
     hatchDate: ent.hatchDate || '',
     ageLabel: ent.hatchDate ? ageLabel(ent.hatchDate) : '',
-    dotStatus: ent.dotStatus || '',
-    growthStage: kind==='individual' ? growthStageOfIndividual(ent) : growthStageOfHatchling(ent),
-    photoDataUrl: photo ? photo.dataUrl : null,
     sire, dam,
     weightLog: sortedWeightLog( (kind==='hatchling' && ent.promotedToId) ? (state.individuals.find(i=>i.id===ent.promotedToId)||ent) : ent ).slice(0,8)
   };
@@ -4540,7 +4549,14 @@ async function runExportCard(kind, id, format){
   if(!data){ alert('정보를 찾을 수 없어요.'); return; }
   try{
     if(format==='image'){
-      await exportCardAsImage(data, {includePedigree, includeWeight});
+      const canvas = renderCardCanvas(data, {includePedigree, includeWeight});
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data.displayName||data.id}_정보카드.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     } else {
       await exportCardAsPDF(data, {includePedigree, includeWeight});
     }
@@ -4551,31 +4567,28 @@ async function runExportCard(kind, id, format){
   }
 }
 
-/* ---------------- 이미지(canvas) 생성 ---------------- */
-async function exportCardAsImage(data, opts){
+/* ---------------- 카드 내용을 canvas에 그린다 (이미지/PDF 공용) ---------------- */
+function renderCardCanvas(data, opts){
   const W = 800;
   const pad = 40;
 
-  // 사진 미리 로드
-  let photoImg = null;
-  if(data.photoDataUrl){
-    photoImg = await loadImageEl(data.photoDataUrl);
-  }
-
-  // 실제로 그릴 때와 정확히 같은 증가값으로 먼저 높이를 계산한다(그려보고 나서 잘리거나 빈 공간 남지 않도록)
-  let y = 64+28; // 헤더
-  y += 96+30;    // 사진+기본정보 블록
-  y += 30;       // 구분선 여백
+  // 실제로 그릴 때와 정확히 같은 증가값으로 먼저 높이를 계산한다
+  let y = 64+34; // 헤더 + 이름 블록 시작 여백
+  y += 30+22+22; // 이름, ID, 성별·모프 줄
+  if(data.hatchDate) y += 20;
+  y += 24; // 구분선 여백
 
   if(opts.includePedigree){
     y += 26+22; // 제목 + 부 라인
+    if(data.sire && data.sire.morphLabel) y += 18;
     if(data.sire && (data.sire.sireName||data.sire.damName)) y += 20;
     y += 22; // 모 라인
+    if(data.dam && data.dam.morphLabel) y += 18;
     if(data.dam && (data.dam.sireName||data.dam.damName)) y += 20;
-    y += 12+30; // 여백+구분선 여백
+    y += 12+30;
   }
   if(opts.includeWeight && data.weightLog.length){
-    y += 26; // 제목
+    y += 26;
     y += data.weightLog.length*24;
     y += 10;
   }
@@ -4587,11 +4600,9 @@ async function exportCardAsImage(data, opts){
   canvas.height = y;
   const totalH = y;
 
-  // 배경
   ctx.fillStyle = '#F7F1E3';
   ctx.fillRect(0,0,W,totalH);
 
-  // 헤더 바
   ctx.fillStyle = '#2B1810';
   ctx.fillRect(0,0,W,64);
   ctx.fillStyle = '#F3EFDF';
@@ -4602,63 +4613,50 @@ async function exportCardAsImage(data, opts){
   ctx.fillStyle = '#D9C7B3';
   ctx.fillText('크레스티드 게코 정보 카드', pad, 52);
 
-  y = 64+28;
-
-  // 사진(원형) + 기본정보
-  const photoSize = 96;
-  if(photoImg){
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(pad+photoSize/2, y+photoSize/2, photoSize/2, 0, Math.PI*2);
-    ctx.closePath();
-    ctx.clip();
-    drawImageCover(ctx, photoImg, pad, y, photoSize, photoSize);
-    ctx.restore();
-  } else {
-    ctx.fillStyle = '#EDE4D0';
-    ctx.beginPath();
-    ctx.arc(pad+photoSize/2, y+photoSize/2, photoSize/2, 0, Math.PI*2);
-    ctx.fill();
-  }
-
-  const textX = pad+photoSize+24;
+  y = 64+40;
   ctx.fillStyle = '#2B2118';
-  ctx.font = '700 26px serif';
+  ctx.font = '700 28px serif';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(data.displayName || data.id, textX, y+34);
+  ctx.fillText(data.displayName || data.id, pad, y);
+  y += 30;
   ctx.font = '400 14px sans-serif';
   ctx.fillStyle = '#6E5D4C';
-  ctx.fillText(data.id, textX, y+56);
-  ctx.fillText(`${data.gender} · ${data.morphLabel}`, textX, y+78);
-  if(data.hatchDate) ctx.fillText(`해칭일 ${data.hatchDate}${data.ageLabel?' ('+data.ageLabel+')':''}`, textX, y+98);
+  ctx.fillText(data.id, pad, y);
+  y += 22;
+  ctx.fillText(`${data.gender} · ${data.morphLabel}`, pad, y);
+  y += 22;
+  if(data.hatchDate){
+    ctx.fillText(`해칭일 ${data.hatchDate}${data.ageLabel?' ('+data.ageLabel+')':''}`, pad, y);
+    y += 20;
+  }
+  y += 4;
 
-  y += photoSize+30;
-
-  // 구분선
   ctx.strokeStyle = '#E7DBC4';
   ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
   y += 30;
+
+  function parentLine(label, p){
+    ctx.font = '400 14px sans-serif';
+    ctx.fillStyle = '#2B2118';
+    ctx.fillText(`${label}: ${p?p.name:'미상'}`, pad, y); y += 22;
+    if(p && p.morphLabel){
+      ctx.fillStyle = '#B97A3D'; ctx.font='400 12.5px sans-serif';
+      ctx.fillText(`  ${p.morphLabel}`, pad, y); y += 18;
+    }
+    if(p && (p.sireName||p.damName)){
+      ctx.fillStyle = '#6E5D4C'; ctx.font='400 12.5px sans-serif';
+      const gpLabel = label==='부' ? '조부/조모' : '외조부/외조모';
+      ctx.fillText(`  ㄴ ${gpLabel}: ${p.sireName||'미상'} / ${p.damName||'미상'}`, pad, y); y += 20;
+    }
+  }
 
   if(opts.includePedigree){
     ctx.fillStyle = '#B97A3D';
     ctx.font = '700 15px sans-serif';
     ctx.fillText('가계도', pad, y);
     y += 26;
-    ctx.font = '400 14px sans-serif';
-    ctx.fillStyle = '#2B2118';
-    const sireLine = data.sire ? `부: ${data.sire.name}` : '부: 미상';
-    const damLine = data.dam ? `모: ${data.dam.name}` : '모: 미상';
-    ctx.fillText(sireLine, pad, y); y += 22;
-    if(data.sire && (data.sire.sireName || data.sire.damName)){
-      ctx.fillStyle = '#6E5D4C'; ctx.font='400 12.5px sans-serif';
-      ctx.fillText(`  ㄴ 조부: ${data.sire.sireName||'미상'} / 조모: ${data.sire.damName||'미상'}`, pad, y); y+=20;
-      ctx.fillStyle = '#2B2118'; ctx.font='400 14px sans-serif';
-    }
-    ctx.fillText(damLine, pad, y); y += 22;
-    if(data.dam && (data.dam.sireName || data.dam.damName)){
-      ctx.fillStyle = '#6E5D4C'; ctx.font='400 12.5px sans-serif';
-      ctx.fillText(`  ㄴ 외조부: ${data.dam.sireName||'미상'} / 외조모: ${data.dam.damName||'미상'}`, pad, y); y+=20;
-    }
+    parentLine('부', data.sire);
+    parentLine('모', data.dam);
     y += 12;
     ctx.strokeStyle = '#E7DBC4';
     ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
@@ -4679,36 +4677,15 @@ async function exportCardAsImage(data, opts){
     y += 10;
   }
 
-  // 푸터
   ctx.fillStyle = '#A6947F';
   ctx.font = '400 11.5px sans-serif';
   ctx.fillText('HotChocoCre 크레스티드 매니저로 제작됨', pad, totalH-16);
 
-  const finalUrl = canvas.toDataURL('image/png');
-  const a = document.createElement('a');
-  a.href = finalUrl;
-  a.download = `${data.displayName||data.id}_정보카드.png`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-function loadImageEl(src){
-  return new Promise((resolve,reject)=>{
-    const img = new Image();
-    img.onload = ()=>resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-function drawImageCover(ctx, img, x, y, w, h){
-  const ir = img.width/img.height, tr = w/h;
-  let sx=0, sy=0, sw=img.width, sh=img.height;
-  if(ir>tr){ sw = img.height*tr; sx = (img.width-sw)/2; }
-  else { sh = img.width/tr; sy = (img.height-sh)/2; }
-  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  return canvas;
 }
 
-/* ---------------- PDF 생성 (jsPDF, 최초 사용 시 CDN에서 불러옴 - 인터넷 필요) ---------------- */
+/* ---------------- PDF 생성 (jsPDF, 최초 사용 시 CDN에서 불러옴 - 인터넷 필요)
+   한글은 jsPDF 기본 폰트로 못 그리므로, canvas로 그린 카드를 이미지째로 페이지에 넣는다. ---------------- */
 let __jspdfLoadPromise = null;
 function ensureJsPDFLoaded(){
   if(window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
@@ -4725,86 +4702,22 @@ function ensureJsPDFLoaded(){
 async function exportCardAsPDF(data, opts){
   await ensureJsPDFLoaded();
   const { jsPDF } = window.jspdf;
+  const canvas = renderCardCanvas(data, opts);
+  const imgData = canvas.toDataURL('image/png');
+
+  // A4 폭(pt)에 맞춰 카드 이미지를 비율 유지한 채로 넣는다
+  const pageW = 595.28, pageM = 40;
+  const drawW = pageW - pageM*2;
+  const drawH = drawW * (canvas.height/canvas.width);
   const doc = new jsPDF({ unit:'pt', format:'a4' });
-  const marginX = 48;
-  let y = 56;
-
-  doc.setFillColor(43,24,16);
-  doc.rect(0,0,595,64,'F');
-  doc.setTextColor(243,239,223);
-  doc.setFontSize(20);
-  doc.text('HotChocoCre', marginX, 34);
-  doc.setFontSize(11);
-  doc.setTextColor(217,199,179);
-  doc.text('크레스티드 게코 정보 카드', marginX, 50);
-
-  y = 64+40;
-  doc.setTextColor(43,33,24);
-
-  if(data.photoDataUrl){
-    try{ doc.addImage(data.photoDataUrl, 'JPEG', marginX, y, 80, 80); }catch(e){ try{ doc.addImage(data.photoDataUrl, 'PNG', marginX, y, 80, 80); }catch(e2){} }
-  }
-  const textX = marginX+96;
-  doc.setFontSize(18);
-  doc.text(data.displayName || data.id, textX, y+20);
-  doc.setFontSize(11);
-  doc.setTextColor(110,93,76);
-  doc.text(data.id, textX, y+38);
-  doc.text(`${data.gender} · ${data.morphLabel}`, textX, y+54);
-  if(data.hatchDate) doc.text(`해칭일 ${data.hatchDate}${data.ageLabel?' ('+data.ageLabel+')':''}`, textX, y+70);
-
-  y += 100;
-  doc.setDrawColor(231,219,196);
-  doc.line(marginX,y,595-marginX,y);
-  y += 26;
-
-  if(opts.includePedigree){
-    doc.setTextColor(185,122,61);
-    doc.setFontSize(13);
-    doc.text('가계도', marginX, y); y += 20;
-    doc.setFontSize(11);
-    doc.setTextColor(43,33,24);
-    doc.text(`부: ${data.sire?data.sire.name:'미상'}`, marginX, y); y += 18;
-    if(data.sire && (data.sire.sireName||data.sire.damName)){
-      doc.setTextColor(110,93,76); doc.setFontSize(9.5);
-      doc.text(`  ㄴ 조부: ${data.sire.sireName||'미상'} / 조모: ${data.sire.damName||'미상'}`, marginX, y); y += 16;
-      doc.setTextColor(43,33,24); doc.setFontSize(11);
-    }
-    doc.text(`모: ${data.dam?data.dam.name:'미상'}`, marginX, y); y += 18;
-    if(data.dam && (data.dam.sireName||data.dam.damName)){
-      doc.setTextColor(110,93,76); doc.setFontSize(9.5);
-      doc.text(`  ㄴ 외조부: ${data.dam.sireName||'미상'} / 외조모: ${data.dam.damName||'미상'}`, marginX, y); y += 16;
-      doc.setTextColor(43,33,24); doc.setFontSize(11);
-    }
-    y += 14;
-    doc.setDrawColor(231,219,196);
-    doc.line(marginX,y,595-marginX,y);
-    y += 26;
-  }
-
-  if(opts.includeWeight && data.weightLog.length){
-    doc.setTextColor(185,122,61);
-    doc.setFontSize(13);
-    doc.text('체중 성장 기록', marginX, y); y += 20;
-    doc.setFontSize(10.5);
-    doc.setTextColor(43,33,24);
-    data.weightLog.forEach(w=>{
-      doc.text(`${w.date}    ${w.grams}g`, marginX, y);
-      y += 17;
-    });
-  }
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(166,148,127);
-  doc.text('HotChocoCre 크레스티드 매니저로 제작됨', marginX, 800);
-
+  doc.addImage(imgData, 'PNG', pageM, pageM, drawW, drawH);
   doc.save(`${data.displayName||data.id}_정보카드.pdf`);
 }
 /* =====================================================================
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-29 14:04 KST';
+const APP_BUILD_VERSION = '2026-08-29 14:15 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
