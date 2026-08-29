@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-29 00:05 KST -->
+<!-- BUILD_VERSION: 2026-08-29 13:56 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -177,7 +177,9 @@ main{padding:16px 16px 100px;}
 
 .pc-select-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center;margin-bottom:14px;}
 .pc-select-row .vs{font-family:var(--font-display);font-weight:600;color:var(--amber);font-size:13px;text-align:center;}
-.pc-select-btn{min-width:0;text-align:left;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;background:var(--surface);color:var(--ink);font-size:13px;font-family:var(--font-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.pc-select-btn{min-width:0;text-align:left;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;background:var(--surface);color:var(--ink);font-size:13px;font-family:var(--font-body);cursor:pointer;line-height:1.4;}
+.pc-select-btn .line1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;}
+.pc-select-btn .line2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--ink-faint);font-weight:500;margin-top:1px;}
 .tree-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 13px;font-size:12.5px;color:var(--ink-soft);margin-top:10px;line-height:1.7;}
 .tree-box b{color:var(--ink);}
 .disclaimer{font-size:11.5px;color:var(--ink-faint);line-height:1.6;margin-top:16px;background:var(--surface-2);border-radius:var(--radius-sm);padding:11px 13px;border:1px solid var(--border);}
@@ -1080,6 +1082,11 @@ const HATCHLING_SORTERS = {
      이름만 있는 조상은 그 지점에서 멈춘다(더 위 세대는 알 수 없음).
    - 이름만 있는 조상이라도 "이름+출신업체"가 같으면 동일 개체로 간주해
      겹침을 잡아낸다.
+   - "외부 혈통 참조"(state.externalLineageRefs): 등록되지 않은/이름만 아는
+     조상에 대해 "이 개체(또는 이름만 있는 조상)가 [유명 조상]의 N세손이다"
+     라고 사용자가 직접 적어둔 참고 정보. 계보를 타고 올라가다 이 참조가
+     걸리는 개체/이름을 만나면, 그 지점부터 몇 대를 더 건너뛰어 그 유명
+     조상까지 이어준다(추정치라 estimated 표시를 남김).
 ===================================================================== */
 
 function getEntityById(compositeId){
@@ -1090,6 +1097,13 @@ function getEntityById(compositeId){
     return state.hatchlings.find(h=>h.id===id) || null;
   }
   return state.individuals.find(i=>i.id===compositeId) || null;
+}
+
+function compositeKeyForEntity(ent){
+  if(!ent || !ent.id) return null;
+  if((state.individuals||[]).some(i=>i.id===ent.id)) return 'IND:'+ent.id;
+  if((state.hatchlings||[]).some(h=>h.id===ent.id)) return 'HAT:'+ent.id;
+  return null;
 }
 
 function parentRef(entity, side){
@@ -1104,11 +1118,33 @@ function parentRef(entity, side){
   return null;
 }
 
+/* subjectKey: 등록된 개체는 'IND:id'/'HAT:id', 이름만 있는 조상은 그 이름 그대로(대소문자/공백 정리) */
+function findExternalRef(subjectKey){
+  if(!subjectKey) return null;
+  return (state.externalLineageRefs||[]).find(r=>r.subjectKey===subjectKey) || null;
+}
+function injectExternalRef(visited, subjectKey, baseGen, baseBranch, maxGen){
+  const ref = findExternalRef(subjectKey);
+  if(!ref) return;
+  /* ref.generations는 "그 조상을 1세로 쳤을 때 대상이 몇 세인지"(예: 자식=2세, 손주=3세).
+     실제 세대 차이(칸 수)는 여기서 1을 뺀 값 */
+  const hops = Math.max(1, (parseInt(ref.generations,10)||2) - 1);
+  const newGen = baseGen + hops;
+  if(newGen > maxGen) return;
+  const newBranch = ref.side || baseBranch || null;
+  const key = 'EXTREF:'+ref.ancestorName.trim();
+  const existing = visited.get(key);
+  if(!existing || existing.gen>newGen){
+    visited.set(key, {gen:newGen, label:ref.ancestorName, linkedId:null, branch:newBranch, estimated:true});
+  }
+}
+
 function buildAncestryMap(startEntity, maxGen){
   maxGen = maxGen || 6;
-  const visited = new Map(); // key -> {gen, label, linkedId, branch}
+  const visited = new Map(); // key -> {gen, label, linkedId, branch, estimated?}
   const queue = [{ent:startEntity, gen:0, branch:null}];
   const seenEnt = new Set();
+  injectExternalRef(visited, compositeKeyForEntity(startEntity), 0, null, maxGen);
   while(queue.length){
     const {ent, gen, branch} = queue.shift();
     if(gen>=maxGen) continue;
@@ -1123,6 +1159,20 @@ function buildAncestryMap(startEntity, maxGen){
       if(!existing || existing.gen>newGen){
         visited.set(key, {gen:newGen, label, linkedId: ref.type==='linked'?ref.id:null, branch:newBranch});
       }
+      /* 이름만 있는 조상은 "이름만으로"도 매칭될 수 있게 별도 키로 한 번 더 등록해둔다.
+         이래야 다른 계보에서 외부 혈통 참조로 같은 이름까지 이어져 온 경우와도 서로 겹침이 잡힌다. */
+      if(ref.type==='named'){
+        const nameOnlyKey = 'EXTREF:'+label.trim();
+        const existing2 = visited.get(nameOnlyKey);
+        if(!existing2 || existing2.gen>newGen){
+          visited.set(nameOnlyKey, {gen:newGen, label, linkedId:null, branch:newBranch});
+        }
+      }
+      if(ref.type==='linked'){
+        injectExternalRef(visited, 'IND:'+ref.id, newGen, newBranch, maxGen);
+      } else {
+        injectExternalRef(visited, (ent[side+'Name']||'').trim(), newGen, newBranch, maxGen);
+      }
       if(ref.type==='linked' && !seenEnt.has('ID:'+ref.id+':'+newGen)){
         const nextInd = state.individuals.find(i=>i.id===ref.id);
         if(nextInd){
@@ -1135,12 +1185,14 @@ function buildAncestryMap(startEntity, maxGen){
   return visited;
 }
 
-/* 세대수 + 부/모 쪽을 한국어 호칭으로: 1대=부/모, 2대=조부모/외조부모, 3대=증조부모/외증조부모, 4대 이상은 구체적 호칭 없이 "N대 위 조상" */
+/* 세대수 + 부계/모계를 한국어 호칭으로: 1대=부/모, 2대=조부모/외조부모, 3대=증조부모/외증조부모,
+   4대 이상은 별도 호칭은 없지만 부계/모계 구분은 계속 붙여준다("N대 위 조상(부계)"처럼) */
 function kinshipLabel(gen, branch){
-  if(gen===1) return branch==='sire' ? '부' : '모';
-  if(gen===2) return branch==='sire' ? '조부모' : '외조부모';
-  if(gen===3) return branch==='sire' ? '증조부모' : '외증조부모';
-  return `${gen}대 위 조상`;
+  if(gen===1) return branch==='sire' ? '부' : (branch==='dam' ? '모' : '부모 중 한쪽(미상)');
+  if(gen===2) return branch==='sire' ? '조부모(부계)' : (branch==='dam' ? '외조부모(모계)' : '조부모');
+  if(gen===3) return branch==='sire' ? '증조부모(부계)' : (branch==='dam' ? '외증조부모(모계)' : '증조부모');
+  if(!branch) return `${gen}대 위 조상`;
+  return `${gen}대 위 조상(${branch==='sire'?'부계':'모계'})`;
 }
 
 function entityKeyOf(ent){
@@ -1183,7 +1235,7 @@ function compareBloodline(entA, entB){
   mapA.forEach((infoA, key)=>{
     if(mapB.has(key)){
       const infoB = mapB.get(key);
-      common.push({ key, label:infoA.label, genA:infoA.gen, genB:infoB.gen, branchA:infoA.branch, branchB:infoB.branch });
+      common.push({ key, label:infoA.label, genA:infoA.gen, genB:infoB.gen, branchA:infoA.branch, branchB:infoB.branch, estimated: !!(infoA.estimated||infoB.estimated) });
     }
   });
 
@@ -1237,9 +1289,13 @@ function renderBloodlineBanner(entA, entB){
     <b>${levelIcon(r.level)} [${levelLabel(r.level)}] ${esc(r.title)}</b>
     ${esc(r.detail)}`;
   if(r.common && r.common.length){
+    const anyEstimated = r.common.some(c=>c.estimated);
     html += `<ul>` + r.common.slice(0,5).map(c=>
-      `<li>공통 조상: <b>${esc(c.label)}</b> (${esc(entA.name||entA.morph||'A')}쪽 ${esc(kinshipLabel(c.genA,c.branchA))} / ${esc(entB.name||entB.morph||'B')}쪽 ${esc(kinshipLabel(c.genB,c.branchB))})</li>`
+      `<li>공통 조상: <b>${esc(c.label)}</b>${c.estimated?' <span class="ped-tag">추정</span>':''} (${esc(entA.name||entA.morph||'A')}쪽 ${esc(kinshipLabel(c.genA,c.branchA))} / ${esc(entB.name||entB.morph||'B')}쪽 ${esc(kinshipLabel(c.genB,c.branchB))})</li>`
     ).join('') + `</ul>`;
+    if(anyEstimated){
+      html += `<div style="font-size:11.5px;opacity:.85;margin-top:2px;">"추정" 표시는 직접 입력해두신 외부 혈통 참조를 근거로 한 추정치예요. 정확한 판단을 위해 분양처 혈통서도 함께 확인해주세요.</div>`;
+    }
   }
   html += `</div>`;
   return html;
@@ -2223,13 +2279,15 @@ function renderWeightLogSectionContent(kind, entity){
 }
 
 /* ---------------- 접이식 섹션(부모정보/사육상태 등 공용) ---------------- */
+const collapsibleSectionOpenState = {}; // id -> bool, 세션 동안(새로고침 전까지) 열림 상태 기억
 function collapsibleSection(id, title, contentHtml, defaultOpen){
+  const isOpen = collapsibleSectionOpenState.hasOwnProperty(id) ? collapsibleSectionOpenState[id] : defaultOpen;
   return `<div class="chipgroup-wrap" style="margin-bottom:12px;">
     <button type="button" class="chipgroup-toggle" onclick="toggleDetailSection('${id}')">
       <span>${esc(title)}</span>
-      <span class="chevron" id="${id}Chevron">${defaultOpen?'▴':'▾'}</span>
+      <span class="chevron" id="${id}Chevron">${isOpen?'▴':'▾'}</span>
     </button>
-    <div class="chipgroup-panel" id="${id}Panel" style="display:${defaultOpen?'block':'none'};">
+    <div class="chipgroup-panel" id="${id}Panel" style="display:${isOpen?'block':'none'};">
       ${contentHtml}
     </div>
   </div>`;
@@ -2241,6 +2299,7 @@ function toggleDetailSection(id){
   const isOpen = panel.style.display !== 'none';
   panel.style.display = isOpen ? 'none' : 'block';
   if(chevron) chevron.textContent = isOpen ? '▾' : '▴';
+  collapsibleSectionOpenState[id] = !isOpen;
 }
 
 /* ---------------- 개체 정보 보기(읽기 전용) + 수정하기 버튼 ---------------- */
@@ -2341,7 +2400,8 @@ function openIndividualDetail(id){
   body += `<div class="modal-actions" style="margin-top:16px;">
     <button type="button" class="btn btn-ghost" onclick="openPedigreeTreeModal('IND:${ind.id}')">🌳 가계도</button>
     <button type="button" class="btn btn-primary" onclick="openIndividualForm('${ind.id}')">✏️ 수정하기</button>
-  </div>`;
+  </div>
+  <button type="button" class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="openExportCardForm('individual','${ind.id}')">📤 정보 카드 추출 (분양자용)</button>`;
 
   openModal(ind.name||ind.id, body);
 }
@@ -3306,17 +3366,94 @@ function pickEntity(key){
   closeModal();
   renderMainOnly();
 }
+function clearPedigreeSel(side){
+  pedigreeSel[side] = '';
+  renderMainOnly();
+}
 function pedigreeEntityLabel(key){
   const ent = getEntityById(key);
-  if(!ent) return '개체 선택하기';
-  const morphLabel = formatMorphDisplayFull(ent.morph, ent.morphHet, ent.morphPatterns, ent.morphColors);
-  const name = ent.name || ent.morph || ent.id;
-  return morphLabel && ent.name ? `${name} · ${morphLabel}` : name;
+  if(!ent) return null;
+  const morphLabel = formatMorphDisplayFull(ent.morph, ent.morphHet, ent.morphPatterns, ent.morphColors) || ent.morph || '모프 미정';
+  if(ent.name){
+    // 개체(이름 있음): 1줄 이름 / 2줄 모프
+    return { primary: ent.name, secondary: morphLabel };
+  }
+  // 해칭개체(이름이 따로 없음): 1줄 고유번호 / 2줄 모프
+  return { primary: ent.id, secondary: morphLabel };
+}
+function renderPedigreeSelectBtnContent(side){
+  const key = pedigreeSel[side];
+  if(!key) return '개체 선택하기';
+  const p = pedigreeEntityLabel(key);
+  if(!p) return '개체 선택하기';
+  return `<div class="line1">${esc(p.primary)}</div><div class="line2">${esc(p.secondary)}</div>`;
 }
 
 function setPedigreeSel(side, value){
   pedigreeSel[side] = value;
   renderMainOnly();
+}
+
+/* ---------------- 외부 혈통 참조 (등록 안 된/이름만 아는 조상 연결) ---------------- */
+function resolveLineageSubjectKey(name){
+  const trimmed = (name||'').trim();
+  if(!trimmed) return null;
+  const ind = state.individuals.find(i=>(i.name||'').trim()===trimmed);
+  if(ind) return 'IND:'+ind.id;
+  return trimmed; // 등록된 개체가 아니면 이름 자체를 키로 사용(이름만 아는 조상)
+}
+function renderExternalLineageRefList(){
+  const refs = state.externalLineageRefs||[];
+  if(refs.length===0) return `<div class="readonly-note">아직 등록된 외부 혈통 참조가 없어요.</div>`;
+  return refs.map(r=>{
+    const sideLabel = r.side==='sire' ? '부계 라인' : (r.side==='dam' ? '모계 라인' : '부계/모계 모름');
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 2px;border-top:1px dashed var(--border);">
+      <div style="font-size:12.5px;color:var(--ink);"><b>${esc(r.subjectLabel)}</b> = <b>${esc(r.ancestorName)}</b>의 ${esc(r.generations)}세 (${esc(sideLabel)})</div>
+      <button type="button" onclick="deleteExternalLineageRef('${r.id}')" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:4px 8px;">삭제</button>
+    </div>`;
+  }).join('');
+}
+function openAddExternalLineageRefForm(){
+  const body = `
+    <form id="ext-lineage-form" onsubmit="event.preventDefault(); saveExternalLineageRef();">
+      <label class="field full"><span>대상 이름</span><input name="subjectName" required placeholder="예: 제트 또는 크리스마스"></label>
+      <div class="readonly-note" style="margin-top:-8px;">등록된 개체 이름과 정확히 같으면 그 개체에 연결되고, 아니면 '이름만 아는 조상'으로 저장돼서 나중에 그 이름이 부모로 등장하는 곳마다 자동으로 이어져요.</div>
+      <div class="form-grid">
+        <label class="field full"><span>알려진 조상 이름</span><input name="ancestorName" required placeholder="예: 짐"></label>
+        <label class="field"><span>그 조상을 1세로 치면 대상은 몇 세인지</span><input type="number" name="generations" min="2" value="2" required></label>
+        <label class="field"><span>부계/모계 (아는 경우만)</span><select name="side"><option value="">모름</option><option value="sire">부계 라인</option><option value="dam">모계 라인</option></select></label>
+      </div>
+      <div class="readonly-note" style="margin-top:-8px;">조상 본인이 1세, 그 자식이 2세, 손주가 3세... 예를 들어 "짐의 손주가 제트다"면 제트는 3세예요. 실제 위험도 계산에는 이 값에서 자동으로 1을 뺀 세대 차이(칸 수)가 쓰여요.</div>
+      <div class="readonly-note" style="margin-top:-8px;">예) "제트는 짐의 손주(3세)" → 대상: 제트 / 조상: 짐 / 몇 세: 3<br>예) "크리스마스의 부가 짐"(직접 자식=2세) → 대상: 크리스마스 / 조상: 짐 / 몇 세: 2 / 부계</div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">취소</button>
+        <button type="submit" class="btn btn-primary">추가</button>
+      </div>
+    </form>
+  `;
+  openModal('외부 혈통 참조 추가', body);
+}
+async function saveExternalLineageRef(){
+  const fd = new FormData(document.getElementById('ext-lineage-form'));
+  const subjectName = (fd.get('subjectName')||'').trim();
+  const ancestorName = (fd.get('ancestorName')||'').trim();
+  const generations = Math.max(2, parseInt(fd.get('generations'),10) || 2);
+  const side = fd.get('side') || '';
+  if(!subjectName || !ancestorName) return;
+  const subjectKey = resolveLineageSubjectKey(subjectName);
+  if(!subjectKey) return;
+  if(!state.externalLineageRefs) state.externalLineageRefs = [];
+  state.externalLineageRefs.push({
+    id: 'ext'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+    subjectKey, subjectLabel: subjectName, ancestorName, generations, side
+  });
+  closeModal();
+  await persistAndRender();
+}
+async function deleteExternalLineageRef(id){
+  if(!confirm('이 외부 혈통 참조를 삭제할까요?')) return;
+  state.externalLineageRefs = (state.externalLineageRefs||[]).filter(r=>r.id!==id);
+  await persistAndRender();
 }
 
 function renderPedigreeTab(){
@@ -3325,9 +3462,15 @@ function renderPedigreeTab(){
   페어링을 고려 중인 두 개체를 선택하면, 등록된 부모 정보를 거슬러 올라가 공통 조상이 있는지 확인해드려요.
   </p>
   <div class="pc-select-row">
-    <button type="button" class="pc-select-btn" onclick="openEntityPicker('a')">${esc(pedigreeSel.a?pedigreeEntityLabel(pedigreeSel.a):'개체 선택하기')}</button>
+    <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+      <button type="button" class="pc-select-btn" style="flex:1;" onclick="openEntityPicker('a')">${renderPedigreeSelectBtnContent('a')}</button>
+      ${pedigreeSel.a?`<button type="button" onclick="clearPedigreeSel('a')" aria-label="선택 해제" style="flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-faint);font-size:13px;cursor:pointer;">×</button>`:''}
+    </div>
     <div class="vs">×</div>
-    <button type="button" class="pc-select-btn" onclick="openEntityPicker('b')">${esc(pedigreeSel.b?pedigreeEntityLabel(pedigreeSel.b):'개체 선택하기')}</button>
+    <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+      <button type="button" class="pc-select-btn" style="flex:1;" onclick="openEntityPicker('b')">${renderPedigreeSelectBtnContent('b')}</button>
+      ${pedigreeSel.b?`<button type="button" onclick="clearPedigreeSel('b')" aria-label="선택 해제" style="flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-faint);font-size:13px;cursor:pointer;">×</button>`:''}
+    </div>
   </div>`;
 
   if(pedigreeSel.a && pedigreeSel.b){
@@ -3344,6 +3487,13 @@ function renderPedigreeTab(){
   }
 
   html += `<div class="disclaimer">이 검사는 등록된 부모 정보(개체 ID 연결 또는 이름+출신 업체)를 근거로 한 참고용 계산입니다. 외부에서 영입한 개체의 조상 정보가 시스템에 없으면 그 위 세대는 확인할 수 없어요. 정확한 판단을 위해 분양처의 혈통서도 함께 확인해주세요.</div>`;
+
+  html += collapsibleSection('extLineageRefs', '외부 혈통 참조 추가 (등록 안 된 조상 연결하기)', `
+    <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.6;margin:0 0 10px;">부모 정보가 없어서 계보가 끊기는 개체라도, "이 개체(또는 이름만 아는 조상)가 [유명 조상]의 몇 세손이다"라는 걸 알고 있으면 여기 적어두세요. 위 검사에 자동으로 반영돼요(단, 추정치예요).</p>
+    <button type="button" class="btn btn-ghost btn-block" style="margin-bottom:4px;" onclick="openAddExternalLineageRefForm()">+ 외부 혈통 참조 추가</button>
+    ${renderExternalLineageRefList()}
+  `, false);
+
   return html;
 }
 
@@ -3485,7 +3635,8 @@ function openHatchlingDetail(id){
   body += `<div class="modal-actions" style="margin-top:16px;">
     <button type="button" class="btn btn-ghost" onclick="openPedigreeTreeModal('HAT:${h.id}')">🌳 가계도</button>
     <button type="button" class="btn btn-primary" onclick="openHatchlingForm('${h.id}')">✏️ 수정하기</button>
-  </div>`;
+  </div>
+  <button type="button" class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="openExportCardForm('hatchling','${h.id}')">📤 정보 카드 추출 (분양자용)</button>`;
 
   openModal(morphLabel||h.morph||'해칭개체', body);
 }
@@ -4323,10 +4474,337 @@ function renderSoldTab(){
   return html;
 }
 /* =====================================================================
+   정보 카드 추출 (이미지 / PDF) - 분양자에게 주기 좋은 요약 카드
+   기본정보 + (선택)가계도 + (선택)체중 성장기록 을 이미지 또는 PDF로 저장한다.
+===================================================================== */
+
+function gatherExportData(kind, id){
+  const ent = kind==='individual' ? state.individuals.find(i=>i.id===id) : state.hatchlings.find(h=>h.id===id);
+  if(!ent) return null;
+  const morphLabel = formatMorphDisplayFull(ent.morph, ent.morphHet, ent.morphPatterns, ent.morphColors) || ent.morph || '모프 미정';
+  const photo = (ent.photos||[]).find(p=>p.id===ent.primaryPhotoId) || (ent.photos||[])[0] || null;
+
+  // 부모/조부모(2대)까지 - 링크된 개체는 그 개체 자신의 부모정보까지, 이름만 있으면 이름만
+  function parentInfo(side, of){
+    const idKey = side+'Id', nameKey = side+'Name';
+    if(of[idKey]){
+      const p = state.individuals.find(i=>i.id===of[idKey]);
+      if(p) return { name:p.name, linked:true, sireName:p.sireName||'', damName:p.damName||'' };
+    }
+    if(of[nameKey]){
+      return { name:of[nameKey], linked:false, sireName:'', damName:'' };
+    }
+    return null;
+  }
+  const sire = parentInfo('sire', ent);
+  const dam = parentInfo('dam', ent);
+
+  return {
+    kind, id: ent.id,
+    displayName: ent.name || null,
+    morphLabel,
+    gender: ent.gender || '미구분',
+    hatchDate: ent.hatchDate || '',
+    ageLabel: ent.hatchDate ? ageLabel(ent.hatchDate) : '',
+    dotStatus: ent.dotStatus || '',
+    growthStage: kind==='individual' ? growthStageOfIndividual(ent) : growthStageOfHatchling(ent),
+    photoDataUrl: photo ? photo.dataUrl : null,
+    sire, dam,
+    weightLog: sortedWeightLog( (kind==='hatchling' && ent.promotedToId) ? (state.individuals.find(i=>i.id===ent.promotedToId)||ent) : ent ).slice(0,8)
+  };
+}
+
+function openExportCardForm(kind, id){
+  const body = `
+    <div class="readonly-note">분양 보낼 때 주기 좋은 요약 카드를 만들어요. 포함할 내용을 고르고 형식을 선택해주세요.</div>
+    <div class="form-grid" style="margin-top:10px;">
+      <label class="field full" style="flex-direction:row;align-items:center;gap:8px;display:flex;">
+        <input type="checkbox" id="exportIncludePedigree" checked style="width:auto;"> <span>가계도(부모/조부모) 포함</span>
+      </label>
+      <label class="field full" style="flex-direction:row;align-items:center;gap:8px;display:flex;">
+        <input type="checkbox" id="exportIncludeWeight" checked style="width:auto;"> <span>체중 성장 기록 포함</span>
+      </label>
+    </div>
+    <div class="modal-actions" style="margin-top:16px;flex-direction:column;gap:8px;">
+      <button type="button" class="btn btn-primary btn-block" onclick="runExportCard('${kind}','${id}','image')">🖼️ 이미지로 저장</button>
+      <button type="button" class="btn btn-ghost btn-block" onclick="runExportCard('${kind}','${id}','pdf')">📄 PDF로 저장</button>
+    </div>
+  `;
+  openModal('정보 카드 추출', body);
+}
+
+async function runExportCard(kind, id, format){
+  const includePedigree = document.getElementById('exportIncludePedigree')?.checked ?? true;
+  const includeWeight = document.getElementById('exportIncludeWeight')?.checked ?? true;
+  const data = gatherExportData(kind, id);
+  if(!data){ alert('정보를 찾을 수 없어요.'); return; }
+  try{
+    if(format==='image'){
+      await exportCardAsImage(data, {includePedigree, includeWeight});
+    } else {
+      await exportCardAsPDF(data, {includePedigree, includeWeight});
+    }
+    closeModal();
+  } catch(e){
+    console.error(e);
+    alert('추출 중 문제가 발생했어요. 인터넷 연결이 필요한 기능일 수 있어요(PDF).');
+  }
+}
+
+/* ---------------- 이미지(canvas) 생성 ---------------- */
+async function exportCardAsImage(data, opts){
+  const W = 800;
+  const pad = 40;
+
+  // 사진 미리 로드
+  let photoImg = null;
+  if(data.photoDataUrl){
+    photoImg = await loadImageEl(data.photoDataUrl);
+  }
+
+  // 실제로 그릴 때와 정확히 같은 증가값으로 먼저 높이를 계산한다(그려보고 나서 잘리거나 빈 공간 남지 않도록)
+  let y = 64+28; // 헤더
+  y += 96+30;    // 사진+기본정보 블록
+  y += 30;       // 구분선 여백
+
+  if(opts.includePedigree){
+    y += 26+22; // 제목 + 부 라인
+    if(data.sire && (data.sire.sireName||data.sire.damName)) y += 20;
+    y += 22; // 모 라인
+    if(data.dam && (data.dam.sireName||data.dam.damName)) y += 20;
+    y += 12+30; // 여백+구분선 여백
+  }
+  if(opts.includeWeight && data.weightLog.length){
+    y += 26; // 제목
+    y += data.weightLog.length*24;
+    y += 10;
+  }
+  y += 40; // 푸터 여백
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = W;
+  canvas.height = y;
+  const totalH = y;
+
+  // 배경
+  ctx.fillStyle = '#F7F1E3';
+  ctx.fillRect(0,0,W,totalH);
+
+  // 헤더 바
+  ctx.fillStyle = '#2B1810';
+  ctx.fillRect(0,0,W,64);
+  ctx.fillStyle = '#F3EFDF';
+  ctx.font = '700 22px sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('HotChocoCre', pad, 32);
+  ctx.font = '400 13px sans-serif';
+  ctx.fillStyle = '#D9C7B3';
+  ctx.fillText('크레스티드 게코 정보 카드', pad, 52);
+
+  y = 64+28;
+
+  // 사진(원형) + 기본정보
+  const photoSize = 96;
+  if(photoImg){
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pad+photoSize/2, y+photoSize/2, photoSize/2, 0, Math.PI*2);
+    ctx.closePath();
+    ctx.clip();
+    drawImageCover(ctx, photoImg, pad, y, photoSize, photoSize);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#EDE4D0';
+    ctx.beginPath();
+    ctx.arc(pad+photoSize/2, y+photoSize/2, photoSize/2, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  const textX = pad+photoSize+24;
+  ctx.fillStyle = '#2B2118';
+  ctx.font = '700 26px serif';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(data.displayName || data.id, textX, y+34);
+  ctx.font = '400 14px sans-serif';
+  ctx.fillStyle = '#6E5D4C';
+  ctx.fillText(data.id, textX, y+56);
+  ctx.fillText(`${data.gender} · ${data.morphLabel}`, textX, y+78);
+  if(data.hatchDate) ctx.fillText(`해칭일 ${data.hatchDate}${data.ageLabel?' ('+data.ageLabel+')':''}`, textX, y+98);
+
+  y += photoSize+30;
+
+  // 구분선
+  ctx.strokeStyle = '#E7DBC4';
+  ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+  y += 30;
+
+  if(opts.includePedigree){
+    ctx.fillStyle = '#B97A3D';
+    ctx.font = '700 15px sans-serif';
+    ctx.fillText('가계도', pad, y);
+    y += 26;
+    ctx.font = '400 14px sans-serif';
+    ctx.fillStyle = '#2B2118';
+    const sireLine = data.sire ? `부: ${data.sire.name}` : '부: 미상';
+    const damLine = data.dam ? `모: ${data.dam.name}` : '모: 미상';
+    ctx.fillText(sireLine, pad, y); y += 22;
+    if(data.sire && (data.sire.sireName || data.sire.damName)){
+      ctx.fillStyle = '#6E5D4C'; ctx.font='400 12.5px sans-serif';
+      ctx.fillText(`  ㄴ 조부: ${data.sire.sireName||'미상'} / 조모: ${data.sire.damName||'미상'}`, pad, y); y+=20;
+      ctx.fillStyle = '#2B2118'; ctx.font='400 14px sans-serif';
+    }
+    ctx.fillText(damLine, pad, y); y += 22;
+    if(data.dam && (data.dam.sireName || data.dam.damName)){
+      ctx.fillStyle = '#6E5D4C'; ctx.font='400 12.5px sans-serif';
+      ctx.fillText(`  ㄴ 외조부: ${data.dam.sireName||'미상'} / 외조모: ${data.dam.damName||'미상'}`, pad, y); y+=20;
+    }
+    y += 12;
+    ctx.strokeStyle = '#E7DBC4';
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+    y += 30;
+  }
+
+  if(opts.includeWeight && data.weightLog.length){
+    ctx.fillStyle = '#B97A3D';
+    ctx.font = '700 15px sans-serif';
+    ctx.fillText('체중 성장 기록', pad, y);
+    y += 26;
+    ctx.font = '400 13.5px sans-serif';
+    ctx.fillStyle = '#2B2118';
+    data.weightLog.forEach(w=>{
+      ctx.fillText(`${w.date}   ${w.grams}g`, pad, y);
+      y += 24;
+    });
+    y += 10;
+  }
+
+  // 푸터
+  ctx.fillStyle = '#A6947F';
+  ctx.font = '400 11.5px sans-serif';
+  ctx.fillText('HotChocoCre 크레스티드 매니저로 제작됨', pad, totalH-16);
+
+  const finalUrl = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = finalUrl;
+  a.download = `${data.displayName||data.id}_정보카드.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+function loadImageEl(src){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.onload = ()=>resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+function drawImageCover(ctx, img, x, y, w, h){
+  const ir = img.width/img.height, tr = w/h;
+  let sx=0, sy=0, sw=img.width, sh=img.height;
+  if(ir>tr){ sw = img.height*tr; sx = (img.width-sw)/2; }
+  else { sh = img.width/tr; sy = (img.height-sh)/2; }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+/* ---------------- PDF 생성 (jsPDF, 최초 사용 시 CDN에서 불러옴 - 인터넷 필요) ---------------- */
+let __jspdfLoadPromise = null;
+function ensureJsPDFLoaded(){
+  if(window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+  if(__jspdfLoadPromise) return __jspdfLoadPromise;
+  __jspdfLoadPromise = new Promise((resolve,reject)=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = resolve;
+    s.onerror = ()=>reject(new Error('PDF 라이브러리 로드 실패(인터넷 연결 확인)'));
+    document.head.appendChild(s);
+  });
+  return __jspdfLoadPromise;
+}
+async function exportCardAsPDF(data, opts){
+  await ensureJsPDFLoaded();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const marginX = 48;
+  let y = 56;
+
+  doc.setFillColor(43,24,16);
+  doc.rect(0,0,595,64,'F');
+  doc.setTextColor(243,239,223);
+  doc.setFontSize(20);
+  doc.text('HotChocoCre', marginX, 34);
+  doc.setFontSize(11);
+  doc.setTextColor(217,199,179);
+  doc.text('크레스티드 게코 정보 카드', marginX, 50);
+
+  y = 64+40;
+  doc.setTextColor(43,33,24);
+
+  if(data.photoDataUrl){
+    try{ doc.addImage(data.photoDataUrl, 'JPEG', marginX, y, 80, 80); }catch(e){ try{ doc.addImage(data.photoDataUrl, 'PNG', marginX, y, 80, 80); }catch(e2){} }
+  }
+  const textX = marginX+96;
+  doc.setFontSize(18);
+  doc.text(data.displayName || data.id, textX, y+20);
+  doc.setFontSize(11);
+  doc.setTextColor(110,93,76);
+  doc.text(data.id, textX, y+38);
+  doc.text(`${data.gender} · ${data.morphLabel}`, textX, y+54);
+  if(data.hatchDate) doc.text(`해칭일 ${data.hatchDate}${data.ageLabel?' ('+data.ageLabel+')':''}`, textX, y+70);
+
+  y += 100;
+  doc.setDrawColor(231,219,196);
+  doc.line(marginX,y,595-marginX,y);
+  y += 26;
+
+  if(opts.includePedigree){
+    doc.setTextColor(185,122,61);
+    doc.setFontSize(13);
+    doc.text('가계도', marginX, y); y += 20;
+    doc.setFontSize(11);
+    doc.setTextColor(43,33,24);
+    doc.text(`부: ${data.sire?data.sire.name:'미상'}`, marginX, y); y += 18;
+    if(data.sire && (data.sire.sireName||data.sire.damName)){
+      doc.setTextColor(110,93,76); doc.setFontSize(9.5);
+      doc.text(`  ㄴ 조부: ${data.sire.sireName||'미상'} / 조모: ${data.sire.damName||'미상'}`, marginX, y); y += 16;
+      doc.setTextColor(43,33,24); doc.setFontSize(11);
+    }
+    doc.text(`모: ${data.dam?data.dam.name:'미상'}`, marginX, y); y += 18;
+    if(data.dam && (data.dam.sireName||data.dam.damName)){
+      doc.setTextColor(110,93,76); doc.setFontSize(9.5);
+      doc.text(`  ㄴ 외조부: ${data.dam.sireName||'미상'} / 외조모: ${data.dam.damName||'미상'}`, marginX, y); y += 16;
+      doc.setTextColor(43,33,24); doc.setFontSize(11);
+    }
+    y += 14;
+    doc.setDrawColor(231,219,196);
+    doc.line(marginX,y,595-marginX,y);
+    y += 26;
+  }
+
+  if(opts.includeWeight && data.weightLog.length){
+    doc.setTextColor(185,122,61);
+    doc.setFontSize(13);
+    doc.text('체중 성장 기록', marginX, y); y += 20;
+    doc.setFontSize(10.5);
+    doc.setTextColor(43,33,24);
+    data.weightLog.forEach(w=>{
+      doc.text(`${w.date}    ${w.grams}g`, marginX, y);
+      y += 17;
+    });
+  }
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(166,148,127);
+  doc.text('HotChocoCre 크레스티드 매니저로 제작됨', marginX, 800);
+
+  doc.save(`${data.displayName||data.id}_정보카드.pdf`);
+}
+/* =====================================================================
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-29 00:05 KST';
+const APP_BUILD_VERSION = '2026-08-29 13:56 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
