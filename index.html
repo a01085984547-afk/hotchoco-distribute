@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-29 18:19 KST -->
+<!-- BUILD_VERSION: 2026-08-30 17:10 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -4175,7 +4175,7 @@ function renderSettingsTab(){
   <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="exportExcelBackup()">📊 엑셀로 보기 좋게 내보내기 (PC용)</button>
   <div class="disclaimer" style="margin-top:12px;">
     <b style="display:block;margin-bottom:4px;color:var(--ink);">JSON 파일</b> — 이 앱으로 다시 불러오면(가져오기) 사진까지 포함해서 완벽하게 복원돼요. 폰이 바뀌거나 데이터가 지워졌을 때를 대비한 진짜 백업용이에요.<br><br>
-    <b style="display:block;margin-bottom:4px;color:var(--ink);">엑셀 파일</b> — 컴퓨터에서 표로 열어서 훑어보거나 정리하기 편한 용도예요(사진은 안 들어가고, 이 파일로 앱에 다시 불러오지는 못해요). 시트가 개체관리·메이팅관리·산란알관리·해칭개체로 나뉘어 있어요.
+    <b style="display:block;margin-bottom:4px;color:var(--ink);">엑셀 파일</b> — 컴퓨터에서 표로 열어서 훑어보거나 정리하기 편한 용도예요(사진은 안 들어가고, 이 파일로 앱에 다시 불러오지는 못해요). 시트가 개체관리·메이팅관리·산란알관리·해칭개체·외부혈통참조로 나뉘어 있어요.
   </div>`;
 
   html += `<div class="section-head" style="margin-top:22px;"><h2 style="font-size:15px;">앱 정보</h2></div>
@@ -4249,7 +4249,8 @@ async function exportExcelBackup(){
     const indRows = state.individuals.map(i=>({
       '개체ID': i.id, '이름': i.name||'', '성별': i.gender||'', '해칭일': i.hatchDate||'',
       '모프': i.morph||'', '헷여부': i.morphHet||'', '패턴': (i.morphPatterns||[]).join(', '), '컬러': (i.morphColors||[]).join(', '),
-      '점여부': i.dotStatus||'', '출신구분': i.originType||'', '출신업체': i.originCompany||'',
+      '점여부': i.dotStatus||'', '성장단계': growthStageOfIndividual(i), '출신구분': i.originType||'', '출신업체': i.originCompany||'',
+      '입양일(등록일)': i.adoptionDate||'',
       '부이름': i.sireName||'', '부모프': i.sireMorph||'', '부헷': i.sireHet||'',
       '모이름': i.damName||'', '모모프': i.damMorph||'', '모헷': i.damHet||'',
       '최근무정란산란일(혼자낳음)': i.lastSoloInfertileLayDate||'',
@@ -4271,7 +4272,9 @@ async function exportExcelBackup(){
 
     const clRows = state.clutches.map(c=>({
       '클러치ID': c.id, '메이팅ID': c.matingId||'', '암컷이름': c.damName||'', '수컷이름': c.sireName||'',
-      '차수': c.clutchNum||'', '산란일': c.layDate||'', '알1상태': c.egg1Status||'', '알2상태': c.egg2Status||'',
+      '차수': c.clutchNum||'', '산란일': c.layDate||'', '알1유무정': c.egg1Status||'', '알2유무정': c.egg2Status||'',
+      '알1산란시상태': c.egg1Condition||'', '알2산란시상태': c.egg2Condition||'',
+      '알1인큐중이상': c.egg1IncubationIssue||'', '알2인큐중이상': c.egg2IncubationIssue||'',
       '인큐온도': c.incubationTemp||'', '실제해칭수': c.actualHatchCount||'', '부화실패수': c.failCount||'',
       '특이사항': c.note||''
     }));
@@ -4281,7 +4284,7 @@ async function exportExcelBackup(){
       '해칭ID': h.id, '클러치ID': h.clutchId||'', '알번호': h.eggLabel||'', '해칭일': h.hatchDate||'',
       '인큐베이션일수': h.incubationDays||'', '모이름': h.damName||'', '부이름': h.sireName||'',
       '확정모프': h.morph||'', '헷': h.morphHet||'', '패턴': (h.morphPatterns||[]).join(', '), '컬러': (h.morphColors||[]).join(', '),
-      '성별': h.gender||'', '점여부': h.dotStatus||'',
+      '성별': h.gender||'', '점여부': h.dotStatus||'', '성장단계': growthStageOfHatchling(h),
       '최근체중(g)': (latestWeightEntry(h)||{}).grams||'', '최근체중측정일': (latestWeightEntry(h)||{}).date||'',
       '킵': h.keep||'', '브리딩': h.breeding||'', '메인서브': h.main||'', '상태': h.status||'',
       '분양플랫폼': h.salePlatform||'', '분양일': h.saleDate||'', '분양가': h.price||'',
@@ -4289,6 +4292,14 @@ async function exportExcelBackup(){
       '메모': h.note||''
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hRows), '해칭개체');
+
+    const refRows = (state.externalLineageRefs||[]).map(r=>({
+      '대상': r.subjectLabel||'', '알려진조상': r.ancestorName||'', '몇세대인지': r.generations||'',
+      '부계모계': r.side==='sire'?'부계':(r.side==='dam'?'모계':'모름')
+    }));
+    if(refRows.length>0){
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(refRows), '외부혈통참조');
+    }
 
     XLSX.writeFile(wb, `hotchoco_backup_${todayISO()}.xlsx`);
   }catch(e){
@@ -4508,19 +4519,19 @@ function gatherExportData(kind, id){
   if(!ent) return null;
   const morphLabel = formatMorphDisplayFull(ent.morph, ent.morphHet, ent.morphPatterns, ent.morphColors) || ent.morph || '모프 미정';
 
-  // 부모/조부모(2대)까지 - 링크된 개체는 그 개체 자신의 부모(조부모)의 모프까지, 이름만 있으면 이름+모프
+  // 부모/조부모(2대)까지 - 링크된 개체는 그 개체 자신의 부모(조부모)의 모프·출신업체까지, 이름만 있으면 이름+모프+업체
   function resolveSnapshot(entity, side){
-    const idKey = side+'Id', nameKey = side+'Name', morphKey = side+'Morph', hetKey = side+'Het';
+    const idKey = side+'Id', nameKey = side+'Name', morphKey = side+'Morph', hetKey = side+'Het', coKey = side+'Company';
     if(entity[idKey]){
       const p = state.individuals.find(i=>i.id===entity[idKey]);
       if(p){
         const m = formatMorphDisplayFull(p.morph, p.morphHet, p.morphPatterns, p.morphColors) || p.morph || '';
-        return { name:p.name, morphLabel:m };
+        return { name:p.name, morphLabel:m, company: p.originType==='외부 영입' ? (p.originCompany||'') : '' };
       }
     }
     if(entity[nameKey]){
       const m = formatMorphDisplayFull(entity[morphKey], entity[hetKey], [], []) || entity[morphKey] || '';
-      return { name:entity[nameKey], morphLabel:m };
+      return { name:entity[nameKey], morphLabel:m, company: entity[coKey]||'' };
     }
     return null;
   }
@@ -4535,10 +4546,20 @@ function gatherExportData(kind, id){
         damGP = resolveSnapshot(linkedP, 'dam');
       }
     }
-    return { name:p.name, morphLabel:p.morphLabel, sireGP, damGP };
+    return { name:p.name, morphLabel:p.morphLabel, company:p.company, sireGP, damGP };
   }
   const sire = parentInfo('sire', ent);
   const dam = parentInfo('dam', ent);
+
+  // 분양 완료 상태면 분양 정보(일자/가격/플랫폼)도 같이 담는다
+  let saleInfo = null;
+  if(ent.status==='분양 완료'){
+    saleInfo = {
+      saleDate: ent.saleDate || '',
+      price: kind==='individual' ? ent.salePrice : ent.price,
+      platform: ent.salePlatform || ''
+    };
+  }
 
   return {
     kind, id: ent.id,
@@ -4548,6 +4569,7 @@ function gatherExportData(kind, id){
     hatchDate: ent.hatchDate || '',
     ageLabel: ent.hatchDate ? ageLabel(ent.hatchDate) : '',
     sire, dam,
+    saleInfo,
     weightLog: sortedWeightLog( (kind==='hatchling' && ent.promotedToId) ? (state.individuals.find(i=>i.id===ent.promotedToId)||ent) : ent )
       .filter(w=>w.date && daysBetween(w.date, todayISO())<=183) // 최근 6개월(약 183일)치만
   };
@@ -4610,11 +4632,16 @@ function renderCardCanvas(data, opts){
 
   if(opts.includePedigree){
     y += 26+22; // 제목 + 부 라인
-    if(data.sire && data.sire.morphLabel) y += 18;
+    if(data.sire && (data.sire.morphLabel||data.sire.company)) y += 18;
     if(data.sire && (data.sire.sireGP||data.sire.damGP)) y += 20;
     y += 22; // 모 라인
-    if(data.dam && data.dam.morphLabel) y += 18;
+    if(data.dam && (data.dam.morphLabel||data.dam.company)) y += 18;
     if(data.dam && (data.dam.sireGP||data.dam.damGP)) y += 20;
+    y += 12+30;
+  }
+  if(data.saleInfo){
+    y += 26; // 제목
+    y += 22*3; // 분양일/가격/플랫폼 세 줄
     y += 12+30;
   }
   if(opts.includeWeight && data.weightLog.length){
@@ -4669,9 +4696,10 @@ function renderCardCanvas(data, opts){
     ctx.font = '400 14px sans-serif';
     ctx.fillStyle = '#2B2118';
     ctx.fillText(`${label}: ${p?p.name:'미상'}`, pad, y); y += 22;
-    if(p && p.morphLabel){
+    if(p && (p.morphLabel||p.company)){
       ctx.fillStyle = '#B97A3D'; ctx.font='400 12.5px sans-serif';
-      ctx.fillText(`  ${p.morphLabel}`, pad, y); y += 18;
+      const bits = [p.morphLabel, p.company].filter(Boolean).join(' · ');
+      ctx.fillText(`  ${bits}`, pad, y); y += 18;
     }
     if(p && (p.sireGP||p.damGP)){
       const gpLabel = label==='부' ? '조부/조모' : '외조부/외조모';
@@ -4689,6 +4717,22 @@ function renderCardCanvas(data, opts){
     y += 26;
     parentLine('부', data.sire);
     parentLine('모', data.dam);
+    y += 12;
+    ctx.strokeStyle = '#E7DBC4';
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+    y += 30;
+  }
+
+  if(data.saleInfo){
+    ctx.fillStyle = '#B97A3D';
+    ctx.font = '700 15px sans-serif';
+    ctx.fillText('분양 정보', pad, y);
+    y += 26;
+    ctx.font = '400 14px sans-serif';
+    ctx.fillStyle = '#2B2118';
+    ctx.fillText(`분양일: ${data.saleInfo.saleDate||'미기재'}`, pad, y); y += 22;
+    ctx.fillText(`분양가: ${data.saleInfo.price?fmtMoney(data.saleInfo.price):'미기재'}`, pad, y); y += 22;
+    ctx.fillText(`분양 플랫폼: ${data.saleInfo.platform||'미기재'}`, pad, y); y += 22;
     y += 12;
     ctx.strokeStyle = '#E7DBC4';
     ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
@@ -4749,7 +4793,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-29 18:19 KST';
+const APP_BUILD_VERSION = '2026-08-30 17:10 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
