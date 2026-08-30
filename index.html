@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-30 17:10 KST -->
+<!-- BUILD_VERSION: 2026-08-30 20:24 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -2701,7 +2701,7 @@ function renderCohabitLogListHtml(m){
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 2px;border-top:1px dashed var(--border);">
       <div>
         <div style="font-family:var(--font-display);font-weight:700;font-size:13.5px;color:var(--pine-deep);">${esc(c.startDate)} ~ ${c.endDate?esc(c.endDate):'진행 중'}</div>
-        ${!c.endDate?`<span class="chip" style="margin-top:4px;display:inline-block;">합사 중</span>`:''}
+        ${!c.endDate?`<span class="chip" style="margin-top:4px;display:inline-block;">합사 ${daysBetween(c.startDate, todayISO())}일째</span>`:''}
       </div>
       <div style="display:flex;gap:4px;">
         ${!c.endDate?`<button type="button" onclick="endCohabitToday('${m.id}','${c.id}')" class="btn btn-ghost" style="padding:6px 10px;font-size:12px;">오늘 종료</button>`:''}
@@ -2787,7 +2787,7 @@ function renderMatingCard(m){
         <div><div class="card-title">${esc(m.damName)} × ${esc(m.sireName)}</div><div class="card-id">${esc(m.id)}</div></div>
         <button class="chip ${statusNorm==='진행 중'?'':'muted'}" style="border:none;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation(); toggleMatingStatus('${m.id}')">${statusNorm}</button>
       </div>
-      <div class="card-meta">${riskChip}${activeCohab?`<span class="chip alt">🏠 합사 중 (${esc(activeCohab.startDate)}~)</span>`:''}</div>
+      <div class="card-meta">${riskChip}${activeCohab?`<span class="chip alt">🏠 합사 ${daysBetween(activeCohab.startDate, todayISO())}일째 (${esc(activeCohab.startDate)}~)</span>`:''}</div>
       <div class="card-datarow">
         <div class="dcell"><div class="lbl">${activityLabel}</div><div class="val">${activityDate?esc(activityDate):'-'}</div></div>
         <div class="dcell"><div class="lbl">${ddayLabel}</div><div class="val">${ddayValue}</div></div>
@@ -4793,7 +4793,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-30 17:10 KST';
+const APP_BUILD_VERSION = '2026-08-30 20:24 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
