@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-31 10:32 KST -->
+<!-- BUILD_VERSION: 2026-08-31 10:39 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -1411,9 +1411,11 @@ function renderFab(){
 function renderDashboard(){
   const ind = state.individuals;
   const heldCount = ind.filter(i=>i.status==='보유').length;
-  const totalHatchlingCount = state.hatchlings.length;
-  /* 전체 개체수 = 개체 전부 + (승격 안 된 해칭개체만). 승격된 해칭개체는 이미 개체 쪽에도
-     똑같은 아이가 등록돼있는 거라 두 번 세면 실제 마리수보다 부풀려짐 */
+  /* '해칭개체수'는 우리집에 지금 있는 마릿수를 보여주는 게 목적이라, 분양 완료·사망은 빼고 센다
+     (분양 중이나 기타는 아직 물리적으로 집에 있는 거라 포함) */
+  const inHouseHatchlingCount = state.hatchlings.filter(h=>h.status!=='분양 완료' && h.status!=='사망').length;
+  /* '전체 개체수'는 지금까지 다뤄본 마릿수(역대 기록)라서 상태 상관없이 다 센다. 단, 승격된
+     해칭개체는 개체 쪽에도 같은 아이가 등록돼있으니 중복 집계되지 않게 뺀다 */
   const totalUniqueCount = ind.length + state.hatchlings.filter(h=>!h.promotedToId).length;
   const activeMatings = state.matings.filter(m=>normalizeMatingStatus(m.status)==='진행 중');
   /* '부화 대기'는 유정란 중 아직 해칭 기록이 안 된 것만 - 무정란은 애초에 부화할 게 없으니 제외 */
@@ -1433,7 +1435,7 @@ function renderDashboard(){
     </div>
     <div class="stat-grid">
       <div class="stat-card"><div class="num">${heldCount}</div><div class="lbl">보유 개체</div></div>
-      <div class="stat-card"><div class="num">${totalHatchlingCount}</div><div class="lbl">해칭개체수</div></div>
+      <div class="stat-card"><div class="num">${inHouseHatchlingCount}</div><div class="lbl">해칭개체수</div></div>
       <div class="stat-card"><div class="num">${activeMatings.length}</div><div class="lbl">진행 중 메이팅</div></div>
       <div class="stat-card"><div class="num">${openEggCount}</div><div class="lbl">부화 대기 알</div></div>
     </div>
@@ -4799,7 +4801,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-31 10:32 KST';
+const APP_BUILD_VERSION = '2026-08-31 10:39 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
