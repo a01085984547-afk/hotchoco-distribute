@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-31 17:53 KST -->
+<!-- BUILD_VERSION: 2026-08-31 17:56 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -1511,9 +1511,7 @@ function renderDashboard(){
   }
 
   html += `<div class="disclaimer">부화·산란 예정일은 등록된 정보를 기준으로 계산한 참고용 결과입니다.</div>`;
-  if(ID_PREFIX==='CR'){
-    html += `<div style="text-align:center;color:var(--ink-faint);font-size:11px;margin-top:14px;">Made by HotChocoCre</div>`;
-  }
+  html += `<div style="text-align:center;color:var(--ink-faint);font-size:11px;margin-top:14px;">Made by HotChocoCre</div>`;
   return html;
 }
 
@@ -4195,7 +4193,8 @@ function renderSettingsTab(){
   <div class="card"><div class="card-sub" style="line-height:1.8;">
     ${ID_PREFIX==='CR' ? 'CreManager 크레스티드 매니저' : 'HotChocoCre 크레스티드 매니저'}<br>
     개체 · 메이팅 · 산란/알 · 해칭개체 · 혈통(근친) 관리<br>
-    <span style="color:var(--ink-faint);font-size:11.5px;">빌드: ${APP_BUILD_VERSION}</span>${ID_PREFIX==='CR' ? '<br><span style="color:var(--ink-faint);font-size:11.5px;">Made by HotChocoCre</span>' : ''}
+    <span style="color:var(--ink-faint);font-size:11.5px;">빌드: ${APP_BUILD_VERSION}</span><br>
+    <span style="color:var(--ink-faint);font-size:11.5px;">Made by HotChocoCre</span>
   </div></div>`;
 
   return html;
@@ -4806,7 +4805,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-31 17:53 KST';
+const APP_BUILD_VERSION = '2026-08-31 17:56 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
