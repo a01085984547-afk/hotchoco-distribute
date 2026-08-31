@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-08-30 20:24 KST -->
+<!-- BUILD_VERSION: 2026-08-31 10:24 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -1411,7 +1411,7 @@ function renderFab(){
 function renderDashboard(){
   const ind = state.individuals;
   const heldCount = ind.filter(i=>i.status==='보유').length;
-  const breedingCount = ind.filter(i=>i.breeding==='예').length;
+  const heldHatchlingCount = state.hatchlings.filter(h=>h.status==='보유').length;
   const activeMatings = state.matings.filter(m=>normalizeMatingStatus(m.status)==='진행 중');
   /* '부화 대기'는 유정란 중 아직 해칭 기록이 안 된 것만 - 무정란은 애초에 부화할 게 없으니 제외 */
   let openEggCount = 0;
@@ -1427,7 +1427,7 @@ function renderDashboard(){
   let html = `
     <div class="stat-grid">
       <div class="stat-card"><div class="num">${heldCount}</div><div class="lbl">보유 개체</div></div>
-      <div class="stat-card"><div class="num">${breedingCount}</div><div class="lbl">브리딩 개체</div></div>
+      <div class="stat-card"><div class="num">${heldHatchlingCount}</div><div class="lbl">해칭개체수</div></div>
       <div class="stat-card"><div class="num">${activeMatings.length}</div><div class="lbl">진행 중 메이팅</div></div>
       <div class="stat-card"><div class="num">${openEggCount}</div><div class="lbl">부화 대기 알</div></div>
     </div>
@@ -4793,7 +4793,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-08-30 20:24 KST';
+const APP_BUILD_VERSION = '2026-08-31 10:24 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
