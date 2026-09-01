@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-09-01 08:06 KST -->
+<!-- BUILD_VERSION: 2026-09-01 22:10 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -1520,9 +1520,13 @@ function setIndividualSort(v){ individualSort = v; updateIndividualListBody(); }
 let individualMorphFilter = '';
 let individualHetFilter = '';
 let individualGenderFilter = '';
+let individualMainFilter = '';
+let individualStageFilter = '';
 function setIndividualMorphFilter(v){ individualMorphFilter = v; updateIndividualListBody(); }
 function setIndividualHetFilter(v){ individualHetFilter = v; updateIndividualListBody(); }
 function setIndividualGenderFilter(v){ individualGenderFilter = v; updateIndividualListBody(); }
+function setIndividualMainFilter(v){ individualMainFilter = v; updateIndividualListBody(); }
+function setIndividualStageFilter(v){ individualStageFilter = v; updateIndividualListBody(); }
 function setIndividualFilter(v){ listFilters.individual = v; updateIndividualListBody(); }
 
 function getFilteredIndividuals(){
@@ -1539,6 +1543,12 @@ function getFilteredIndividuals(){
   }
   if(individualGenderFilter){
     items = items.filter(i=>i.gender===individualGenderFilter);
+  }
+  if(individualMainFilter){
+    items = items.filter(i=>(i.main||'보류')===individualMainFilter);
+  }
+  if(individualStageFilter){
+    items = items.filter(i=>growthStageOfIndividual(i)===individualStageFilter);
   }
   return items;
 }
@@ -1661,6 +1671,22 @@ function renderIndividualList(){
         <option value="수컷" ${individualGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
         <option value="암컷" ${individualGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
         <option value="미구분" ${individualGenderFilter==='미구분'?'selected':''}>미구분 (${genderCounts['미구분']||0}마리)</option>
+      </select>
+    </div>
+    <div class="searchbar">
+      <select onchange="setIndividualMainFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+        <option value="">메인/서브 전체보기</option>
+        <option value="메인" ${individualMainFilter==='메인'?'selected':''}>메인</option>
+        <option value="서브" ${individualMainFilter==='서브'?'selected':''}>서브</option>
+        <option value="보류" ${individualMainFilter==='보류'?'selected':''}>보류</option>
+      </select>
+      <select onchange="setIndividualStageFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+        <option value="">성장단계 전체보기</option>
+        <option value="베이비" ${individualStageFilter==='베이비'?'selected':''}>베이비</option>
+        <option value="아성체" ${individualStageFilter==='아성체'?'selected':''}>아성체</option>
+        <option value="준성체" ${individualStageFilter==='준성체'?'selected':''}>준성체</option>
+        <option value="성체" ${individualStageFilter==='성체'?'selected':''}>성체</option>
+        <option value="미상" ${individualStageFilter==='미상'?'selected':''}>미상</option>
       </select>
     </div>
     <div id="individual-list-body">${renderIndividualListBody(items)}</div>`;
@@ -4805,7 +4831,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-09-01 08:06 KST';
+const APP_BUILD_VERSION = '2026-09-01 22:10 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
