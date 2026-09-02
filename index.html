@@ -1558,6 +1558,39 @@ function updateIndividualListBody(){
   if(body) body.innerHTML = renderIndividualListBody(items);
   const count = document.getElementById('individual-count');
   if(count) count.textContent = `${items.length} / ${state.individuals.length}마리`;
+  refreshIndividualFilterCounts();
+}
+/* 검색어(이름/ID/모프) 기준으로 모프·헷·성별 드롭다운 숫자를 다시 계산해서 옵션만 갈아끼운다.
+   검색창에 입력할 때마다 호출돼서, "지금 검색 상태에서 이 옵션을 고르면 몇 마리 남는지"를
+   항상 정확하게 보여준다(입력 커서가 끊기지 않게 옵션만 교체하고 select 자체는 안 건드림). */
+function refreshIndividualFilterCounts(){
+  const q = listFilters.individual.trim().toLowerCase();
+  const searchOnly = state.individuals.filter(i=>{
+    if(!q) return true;
+    return (i.name||'').toLowerCase().includes(q)||(i.id||'').toLowerCase().includes(q)||(i.morph||'').toLowerCase().includes(q);
+  });
+  const morphCounts = {}, hetCounts = {}, genderCounts = {};
+  searchOnly.forEach(i=>{
+    if(i.morph) morphCounts[i.morph] = (morphCounts[i.morph]||0)+1;
+    if(i.morphHet) hetCounts[i.morphHet] = (hetCounts[i.morphHet]||0)+1;
+    if(i.gender) genderCounts[i.gender] = (genderCounts[i.gender]||0)+1;
+  });
+  const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
+  const hetList = HET_OPTIONS.filter(h=>h!=='없음');
+
+  const morphSel = document.getElementById('individual-morph-filter');
+  if(morphSel) morphSel.innerHTML = `<option value="">모프 전체 보기</option>` +
+    morphList.map(m=>`<option value="${esc(m)}" ${m===individualMorphFilter?'selected':''}>${esc(m)} (${morphCounts[m]}마리)</option>`).join('');
+
+  const hetSel = document.getElementById('individual-het-filter');
+  if(hetSel) hetSel.innerHTML = `<option value="">헷 여부</option>` +
+    hetList.map(h=>`<option value="${esc(h)}" ${h===individualHetFilter?'selected':''}>${esc(h)}${hetCounts[h]?' ('+hetCounts[h]+'마리)':''}</option>`).join('');
+
+  const genderSel = document.getElementById('individual-gender-filter');
+  if(genderSel) genderSel.innerHTML = `<option value="">성별 전체보기</option>
+    <option value="수컷" ${individualGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
+    <option value="암컷" ${individualGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
+    <option value="미구분" ${individualGenderFilter==='미구분'?'selected':''}>미구분 (${genderCounts['미구분']||0}마리)</option>`;
 }
 
 function avatarHtml(entity, kind, size){
@@ -1630,7 +1663,12 @@ function renderIndividualList(){
   const morphCounts = {};
   const hetCounts = {};
   const genderCounts = {};
-  state.individuals.forEach(i=>{
+  const q = listFilters.individual.trim().toLowerCase();
+  const searchOnly = state.individuals.filter(i=>{
+    if(!q) return true;
+    return (i.name||'').toLowerCase().includes(q)||(i.id||'').toLowerCase().includes(q)||(i.morph||'').toLowerCase().includes(q);
+  });
+  searchOnly.forEach(i=>{
     if(i.morph) morphCounts[i.morph] = (morphCounts[i.morph]||0)+1;
     if(i.morphHet) hetCounts[i.morphHet] = (hetCounts[i.morphHet]||0)+1;
     if(i.gender) genderCounts[i.gender] = (genderCounts[i.gender]||0)+1;
@@ -1656,17 +1694,17 @@ function renderIndividualList(){
       <select onchange="setIndividualSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         ${sortOptions.map(o=>`<option value="${o.v}" ${o.v===individualSort?'selected':''}>${o.l}</option>`).join('')}
       </select>
-      <select onchange="setIndividualMorphFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-morph-filter" onchange="setIndividualMorphFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">모프 전체 보기</option>
         ${morphList.map(m=>`<option value="${esc(m)}" ${m===individualMorphFilter?'selected':''}>${esc(m)} (${morphCounts[m]}마리)</option>`).join('')}
       </select>
     </div>
     <div class="searchbar">
-      <select onchange="setIndividualHetFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-het-filter" onchange="setIndividualHetFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">헷 여부</option>
         ${hetList.map(h=>`<option value="${esc(h)}" ${h===individualHetFilter?'selected':''}>${esc(h)}${hetCounts[h]?' ('+hetCounts[h]+'마리)':''}</option>`).join('')}
       </select>
-      <select onchange="setIndividualGenderFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-gender-filter" onchange="setIndividualGenderFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">성별 전체보기</option>
         <option value="수컷" ${individualGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
         <option value="암컷" ${individualGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
@@ -1728,6 +1766,43 @@ function updateHatchlingListBody(){
   if(body) body.innerHTML = renderHatchlingListBody(items);
   const count = document.getElementById('hatchling-count');
   if(count) count.textContent = `${items.length} / ${state.hatchlings.length}마리`;
+  refreshHatchlingFilterCounts();
+}
+/* 검색어(ID/모프/부모이름) 기준으로 모프·헷·성별·상태 드롭다운 숫자를 다시 계산해서 옵션만 갈아끼운다. */
+function refreshHatchlingFilterCounts(){
+  const q = listFilters.hatchling.trim().toLowerCase();
+  const searchOnly = state.hatchlings.filter(h=>{
+    if(!q) return true;
+    return (h.morph||'').toLowerCase().includes(q)||(h.id||'').toLowerCase().includes(q)||(h.damName||'').toLowerCase().includes(q)||(h.sireName||'').toLowerCase().includes(q);
+  });
+  const morphCounts = {}, hetCounts = {}, statusCounts = {}, genderCounts = {};
+  searchOnly.forEach(h=>{
+    if(h.morph) morphCounts[h.morph] = (morphCounts[h.morph]||0)+1;
+    if(h.morphHet) hetCounts[h.morphHet] = (hetCounts[h.morphHet]||0)+1;
+    if(h.status) statusCounts[h.status] = (statusCounts[h.status]||0)+1;
+    if(h.gender) genderCounts[h.gender] = (genderCounts[h.gender]||0)+1;
+  });
+  const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
+  const hetList = HET_OPTIONS.filter(h=>h!=='없음');
+  const statusList = ['보유','분양 중','분양 완료','사망','기타'];
+
+  const morphSel = document.getElementById('hatchling-morph-filter');
+  if(morphSel) morphSel.innerHTML = `<option value="">모프 전체 보기</option>` +
+    morphList.map(m=>`<option value="${esc(m)}" ${m===hatchlingMorphFilter?'selected':''}>${esc(m)} (${morphCounts[m]}마리)</option>`).join('');
+
+  const hetSel = document.getElementById('hatchling-het-filter');
+  if(hetSel) hetSel.innerHTML = `<option value="">헷 여부</option>` +
+    hetList.map(h=>`<option value="${esc(h)}" ${h===hatchlingHetFilter?'selected':''}>${esc(h)}${hetCounts[h]?' ('+hetCounts[h]+'마리)':''}</option>`).join('');
+
+  const genderSel = document.getElementById('hatchling-gender-filter');
+  if(genderSel) genderSel.innerHTML = `<option value="">성별 전체보기</option>
+    <option value="수컷" ${hatchlingGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
+    <option value="암컷" ${hatchlingGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
+    <option value="미구분" ${hatchlingGenderFilter==='미구분'?'selected':''}>미구분 (${genderCounts['미구분']||0}마리)</option>`;
+
+  const statusSel = document.getElementById('hatchling-status-filter');
+  if(statusSel) statusSel.innerHTML = `<option value="">상태 전체 보기</option>` +
+    statusList.map(s=>`<option value="${esc(s)}" ${s===hatchlingStatusFilter?'selected':''}>${esc(s)}${statusCounts[s]?' ('+statusCounts[s]+'마리)':''}</option>`).join('');
 }
 
 let hatchlingViewMode = 'card';
@@ -1789,7 +1864,12 @@ function renderHatchlingList(){
   const hetCounts = {};
   const statusCounts = {};
   const genderCounts = {};
-  state.hatchlings.forEach(h=>{
+  const q = listFilters.hatchling.trim().toLowerCase();
+  const searchOnly = state.hatchlings.filter(h=>{
+    if(!q) return true;
+    return (h.morph||'').toLowerCase().includes(q)||(h.id||'').toLowerCase().includes(q)||(h.damName||'').toLowerCase().includes(q)||(h.sireName||'').toLowerCase().includes(q);
+  });
+  searchOnly.forEach(h=>{
     if(h.morph) morphCounts[h.morph] = (morphCounts[h.morph]||0)+1;
     if(h.morphHet) hetCounts[h.morphHet] = (hetCounts[h.morphHet]||0)+1;
     if(h.status) statusCounts[h.status] = (statusCounts[h.status]||0)+1;
@@ -1817,17 +1897,17 @@ function renderHatchlingList(){
       <select onchange="setHatchlingSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         ${sortOptions.map(o=>`<option value="${o.v}" ${o.v===hatchlingSort?'selected':''}>${o.l}</option>`).join('')}
       </select>
-      <select onchange="setHatchlingMorphFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-morph-filter" onchange="setHatchlingMorphFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">모프 전체 보기</option>
         ${morphList.map(m=>`<option value="${esc(m)}" ${m===hatchlingMorphFilter?'selected':''}>${esc(m)} (${morphCounts[m]}마리)</option>`).join('')}
       </select>
     </div>
     <div class="searchbar">
-      <select onchange="setHatchlingHetFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-het-filter" onchange="setHatchlingHetFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">헷 여부</option>
         ${hetList.map(h=>`<option value="${esc(h)}" ${h===hatchlingHetFilter?'selected':''}>${esc(h)}${hetCounts[h]?' ('+hetCounts[h]+'마리)':''}</option>`).join('')}
       </select>
-      <select onchange="setHatchlingGenderFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-gender-filter" onchange="setHatchlingGenderFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">성별 전체보기</option>
         <option value="수컷" ${hatchlingGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
         <option value="암컷" ${hatchlingGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
@@ -1835,7 +1915,7 @@ function renderHatchlingList(){
       </select>
     </div>
     <div class="searchbar">
-      <select onchange="setHatchlingStatusFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-status-filter" onchange="setHatchlingStatusFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">상태 전체 보기</option>
         ${statusList.map(s=>`<option value="${esc(s)}" ${s===hatchlingStatusFilter?'selected':''}>${esc(s)}${statusCounts[s]?' ('+statusCounts[s]+'마리)':''}</option>`).join('')}
       </select>
