@@ -4554,6 +4554,37 @@ function renderSoldCompactRow(r){
   </div>`;
 }
 
+/* 분양 기록을 산란일(saleDate) 기준으로 월별로 묶는다. 날짜 미입력은 맨 뒤에 별도 그룹으로. */
+function groupSoldRecordsByMonth(records){
+  const groups = {};
+  const noDate = [];
+  records.forEach(r=>{
+    if(r.saleDate && /^\d{4}-\d{2}/.test(r.saleDate)){
+      const key = r.saleDate.slice(0,7);
+      if(!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    } else {
+      noDate.push(r);
+    }
+  });
+  const monthKeys = Object.keys(groups).sort((a,b)=>b.localeCompare(a));
+  const result = monthKeys.map(k=>({ key:k, records: groups[k] }));
+  if(noDate.length) result.push({ key:null, records: noDate });
+  return result;
+}
+function monthGroupLabel(key){
+  if(!key) return '분양일 미입력';
+  const [y,m] = key.split('-');
+  return `${y}년 ${parseInt(m,10)}월`;
+}
+function monthGroupHeaderHtml(group){
+  const sum = group.records.reduce((s,r)=>s+(parseFloat(r.salePrice)||0),0);
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:18px 2px 8px;">
+    <div style="font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--pine-deep);">${esc(monthGroupLabel(group.key))}</div>
+    <div style="font-size:12px;color:var(--ink-faint);">${group.records.length}건 · ${esc(fmtMoney(sum))}</div>
+  </div>`;
+}
+
 function renderSoldTab(){
   const allRecords = getAllSoldRecordsUnfiltered();
   const records = getSoldRecords();
@@ -4600,27 +4631,32 @@ function renderSoldTab(){
   </div>`;
 
   if(soldViewMode==='compact'){
-    html += `<div class="compact-list">${records.map(renderSoldCompactRow).join('')}</div>`;
+    const groups = groupSoldRecordsByMonth(records);
+    html += `<div>` + groups.map(g => monthGroupHeaderHtml(g) + `<div class="compact-list">${g.records.map(renderSoldCompactRow).join('')}</div>`).join('') + `</div>`;
     return html;
   }
 
-  records.forEach(r=>{
-    const openFn = r.kind==='individual' ? `openIndividualDetail('${r.id}')` : `openHatchlingDetail('${r.id}')`;
-    html += `<div class="card" onclick="${openFn}">
-      <div class="card-top">
-        <div style="display:flex;gap:10px;align-items:flex-start;">
-          ${avatarHtml(r, r.kind)}
-          <div><div class="card-title">${esc(r.label)}</div><div class="card-id">${esc(r.id)}</div></div>
+  const groups = groupSoldRecordsByMonth(records);
+  groups.forEach(g=>{
+    html += monthGroupHeaderHtml(g);
+    g.records.forEach(r=>{
+      const openFn = r.kind==='individual' ? `openIndividualDetail('${r.id}')` : `openHatchlingDetail('${r.id}')`;
+      html += `<div class="card" onclick="${openFn}">
+        <div class="card-top">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            ${avatarHtml(r, r.kind)}
+            <div><div class="card-title">${esc(r.label)}</div><div class="card-id">${esc(r.id)}</div></div>
+          </div>
+          <div class="chip alt">${r.salePrice?fmtMoney(r.salePrice):'가격 미입력'}</div>
         </div>
-        <div class="chip alt">${r.salePrice?fmtMoney(r.salePrice):'가격 미입력'}</div>
-      </div>
-      <div class="card-meta">
-        <span class="chip muted">${esc(r.gender)}</span>
-        ${r.salePlatform?`<span class="chip muted">${esc(r.salePlatform)}</span>`:''}
-        ${r.kind==='individual'?`<span class="chip">개체</span>`:`<span class="chip muted">해칭개체</span>`}
-      </div>
-      <div class="card-sub">부모 ${esc(r.parents)} · 해칭일 ${esc(r.hatchDate)||'-'}${r.hatchDate?` (${ageLabel(r.hatchDate)})`:''} · 분양일 ${esc(r.saleDate)||'미입력'}</div>
-    </div>`;
+        <div class="card-meta">
+          <span class="chip muted">${esc(r.gender)}</span>
+          ${r.salePlatform?`<span class="chip muted">${esc(r.salePlatform)}</span>`:''}
+          ${r.kind==='individual'?`<span class="chip">개체</span>`:`<span class="chip muted">해칭개체</span>`}
+        </div>
+        <div class="card-sub">부모 ${esc(r.parents)} · 해칭일 ${esc(r.hatchDate)||'-'}${r.hatchDate?` (${ageLabel(r.hatchDate)})`:''} · 분양일 ${esc(r.saleDate)||'미입력'}</div>
+      </div>`;
+    });
   });
 
   return html;
