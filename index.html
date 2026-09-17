@@ -1740,6 +1740,13 @@ function setHatchlingGenderFilter(v){ hatchlingGenderFilter = v; updateHatchling
 let hatchlingStatusFilter = '';
 function setHatchlingFilter(v){ listFilters.hatchling = v; updateHatchlingListBody(); }
 
+let hatchlingShowSold = false;
+function toggleHatchlingShowSold(){
+  hatchlingShowSold = !hatchlingShowSold;
+  updateHatchlingListBody();
+  const btn = document.getElementById('hatchling-show-sold-btn');
+  if(btn) btn.classList.toggle('chip-selected', hatchlingShowSold);
+}
 function getFilteredHatchlings(){
   const q = listFilters.hatchling.trim().toLowerCase();
   let items = state.hatchlings.slice().sort(HATCHLING_SORTERS[hatchlingSort] || HATCHLING_SORTERS.age_desc);
@@ -1757,6 +1764,8 @@ function getFilteredHatchlings(){
   }
   if(hatchlingStatusFilter){
     items = items.filter(h=>h.status===hatchlingStatusFilter);
+  } else if(!hatchlingShowSold){
+    items = items.filter(h=>h.status!=='분양 완료');
   }
   return items;
 }
@@ -1892,6 +1901,7 @@ function renderHatchlingList(){
       <button type="button" id="hatchling-view-card-btn" class="chip-toggle ${hatchlingViewMode==='card'?'chip-selected':''}" style="flex:1;" onclick="setHatchlingViewMode('card')">카드형</button>
       <button type="button" id="hatchling-view-compact-btn" class="chip-toggle ${hatchlingViewMode==='compact'?'chip-selected':''}" style="flex:1;" onclick="setHatchlingViewMode('compact')">간단히 보기</button>
     </div>
+    <button type="button" id="hatchling-show-sold-btn" class="chip-toggle ${hatchlingShowSold?'chip-selected':''}" onclick="toggleHatchlingShowSold()" style="margin-bottom:10px;">분양완료 같이 보기</button>
     <div class="searchbar"><input placeholder="ID·모프·부모 이름으로 검색" value="${esc(listFilters.hatchling)}" oninput="setHatchlingFilter(this.value)"></div>
     <div class="searchbar">
       <select onchange="setHatchlingSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
