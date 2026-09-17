@@ -1901,7 +1901,6 @@ function renderHatchlingList(){
       <button type="button" id="hatchling-view-card-btn" class="chip-toggle ${hatchlingViewMode==='card'?'chip-selected':''}" style="flex:1;" onclick="setHatchlingViewMode('card')">카드형</button>
       <button type="button" id="hatchling-view-compact-btn" class="chip-toggle ${hatchlingViewMode==='compact'?'chip-selected':''}" style="flex:1;" onclick="setHatchlingViewMode('compact')">간단히 보기</button>
     </div>
-    <button type="button" id="hatchling-show-sold-btn" class="chip-toggle ${hatchlingShowSold?'chip-selected':''}" onclick="toggleHatchlingShowSold()" style="margin-bottom:10px;">분양완료 같이 보기</button>
     <div class="searchbar"><input placeholder="ID·모프·부모 이름으로 검색" value="${esc(listFilters.hatchling)}" oninput="setHatchlingFilter(this.value)"></div>
     <div class="searchbar">
       <select onchange="setHatchlingSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
@@ -1929,6 +1928,7 @@ function renderHatchlingList(){
         <option value="">상태 전체 보기</option>
         ${statusList.map(s=>`<option value="${esc(s)}" ${s===hatchlingStatusFilter?'selected':''}>${esc(s)}${statusCounts[s]?' ('+statusCounts[s]+'마리)':''}</option>`).join('')}
       </select>
+      <button type="button" id="hatchling-show-sold-btn" class="chip-toggle ${hatchlingShowSold?'chip-selected':''}" onclick="toggleHatchlingShowSold()" style="flex:1;">분양완료 같이 보기</button>
     </div>
     <div id="hatchling-list-body">${renderHatchlingListBody(items)}</div>`;
 }
