@@ -681,6 +681,36 @@ function migrateResetBreedingForEndedMatings(st){
   });
   return changed;
 }
+/* 기존에 개체 하나당 하나만 저장되던 '최근 무정란 산란일(혼자 낳음)' 단일 필드를
+   여러 건을 남길 수 있는 이력 배열(soloLayLog, 유/무정 상태 포함)로 옮겨준다(1회성, 안전하게 반복 실행 가능). */
+function migrateSoloInfertileLogArray(st){
+  let changed = false;
+  (st.individuals||[]).forEach(i=>{
+    if(i.lastSoloInfertileLayDate && !(i.soloLayLog && i.soloLayLog.length)){
+      i.soloLayLog = [{ id:'sl'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), date:i.lastSoloInfertileLayDate, status:'무정' }];
+      changed = true;
+    }
+    if(i.lastSoloInfertileLayDate){ delete i.lastSoloInfertileLayDate; changed = true; }
+  });
+  return changed;
+}
+/* 첫 버전의 산란 기록(soloInfertileLayLog, 상태 없음/항상 무정 가정)을 새 필드(soloLayLog)로 옮겨준다. */
+function migrateSoloLayLogRename(st){
+  let changed = false;
+  (st.individuals||[]).forEach(i=>{
+    if(i.soloInfertileLayLog && i.soloInfertileLayLog.length){
+      const existing = i.soloLayLog || [];
+      const existingIds = new Set(existing.map(e=>e.id));
+      i.soloInfertileLayLog.forEach(e=>{
+        if(!existingIds.has(e.id)) existing.push({ id:e.id, date:e.date, status:'무정' });
+      });
+      i.soloLayLog = existing;
+      delete i.soloInfertileLayLog;
+      changed = true;
+    }
+  });
+  return changed;
+}
 /* ---------------- storage ---------------- */
 /* 저장소: Claude 아티팩트 환경(window.storage)에서 열었을 때는 그걸 쓰고,
    폰에 설치해서 독립 실행할 때는 브라우저 localStorage로 자동 전환된다. */
@@ -722,7 +752,9 @@ async function loadState(){
   const migratedMainNo = migrateMainNoToHold(state);
   const migratedBreeding = migrateBackfillBreedingProven(state);
   const migratedBreedingReset = migrateResetBreedingForEndedMatings(state);
-  if(fromSeed || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset){ await saveState(); }
+  const migratedSoloInfertileLog = migrateSoloInfertileLogArray(state);
+  const migratedSoloLayLogRename = migrateSoloLayLogRename(state);
+  if(fromSeed || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset || migratedSoloInfertileLog || migratedSoloLayLogRename){ await saveState(); }
 }
 async function saveState(){
   await storageSet(STORAGE_KEY, JSON.stringify(state));
@@ -2439,28 +2471,99 @@ function latestMatingDateForIndividual(individualId){
   });
   return latest;
 }
-function latestInfertileLayDateForDam(individualId){
-  let latest = null;
-  state.clutches.forEach(c=>{
-    if(c.damId!==individualId) return;
-    const hasInfertile = c.egg1Status==='무정' || c.egg2Status==='무정';
-    if(hasInfertile && c.layDate && (!latest || c.layDate>latest)) latest = c.layDate;
-  });
-  return latest;
+/* 산란 기록: 메이팅을 거쳐 알 탭에 기록된 클러치와, 메이팅 없이 혼자 낳아서 수기로 남긴 기록(soloLayLog)을
+   합쳐서 하나의 이력으로 보여준다. 유/무정 여부는 부가 정보로 같이 남긴다.
+   정렬된 배열을 반환 - 각 항목은 {id, date, status('유정'|'무정'|'미상'), source, matingBased, deletable} */
+function sortedSoloLayLog(ind){
+  return (ind.soloLayLog||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 }
-/* 메이팅을 거친 무정란 기록(클러치)과, 메이팅 없이 혼자 낳은 걸 수기로 적어둔 날짜 중 더 최근 것을 보여준다 */
-function combinedLastInfertileLayDate(ind){
-  const fromClutch = latestInfertileLayDateForDam(ind.id);
-  const manual = ind.lastSoloInfertileLayDate || null;
-  if(fromClutch && manual) return fromClutch > manual ? fromClutch : manual;
-  return fromClutch || manual || null;
+function clutchLayStatus(c){
+  if(wasEverFertile(c.egg1Status) || wasEverFertile(c.egg2Status)) return '유정';
+  if(c.egg1Status==='무정' || c.egg2Status==='무정') return '무정';
+  return '미상';
+}
+function combinedLayLog(ind){
+  const entries = [];
+  state.clutches.forEach(c=>{
+    if(c.damId!==ind.id) return;
+    if(!c.layDate) return;
+    const sire = state.individuals.find(i=>i.id===c.sireId);
+    entries.push({ id:'c'+c.id, date:c.layDate, status:clutchLayStatus(c), source: sire ? `메이팅 (부: ${sire.name})` : '메이팅', matingBased:true, deletable:false });
+  });
+  sortedSoloLayLog(ind).forEach(e=>{
+    entries.push({ id:e.id, date:e.date, status:e.status||'미상', source:'혼자 낳음 (메이팅 없이)', matingBased:false, deletable:true });
+  });
+  entries.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return entries;
+}
+/* 최근 산란일 요약 - "2026-09-22(유정)"처럼 날짜와 유/무정 상태를 같이 보여준다 */
+function combinedLastLayInfo(ind){
+  const log = combinedLayLog(ind);
+  if(!log.length) return null;
+  return `${log[0].date}(${log[0].status})`;
+}
+function openSoloLayLogAddForm(individualId){
+  const body = `
+    <form id="solo-lay-log-form" onsubmit="event.preventDefault(); saveSoloLayLogEntry('${individualId}');">
+      <div class="form-grid">
+        <label class="field"><span>산란일</span><input type="date" name="date" value="${todayISO()}" required></label>
+        <label class="field"><span>유/무정</span><select name="status">${selOpts(['무정','유정','미상'],'무정')}</select></label>
+      </div>
+      <div class="readonly-note" style="margin-top:-8px;">메이팅 없이 혼자 배란·산란한 경우만 여기에 적어두면 돼요. 메이팅 후 낳은 알은 알 탭에서 기록하면 자동으로 이 이력에 같이 잡혀요.</div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary btn-block">추가</button>
+      </div>
+    </form>
+  `;
+  openModal('산란 기록 추가', body);
+}
+async function saveSoloLayLogEntry(individualId){
+  const form = document.getElementById('solo-lay-log-form');
+  const fd = new FormData(form);
+  const date = fd.get('date');
+  const status = fd.get('status');
+  if(!date) return;
+  const ind = state.individuals.find(i=>i.id===individualId);
+  if(!ind) return;
+  if(!ind.soloLayLog) ind.soloLayLog = [];
+  ind.soloLayLog.push({ id:'sl'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), date, status });
+  await persistAndRender();
+  openIndividualDetail(individualId);
+}
+async function deleteSoloLayLogEntry(individualId, entryId){
+  if(!confirm('이 산란 기록을 삭제할까요?')) return;
+  const ind = state.individuals.find(i=>i.id===individualId);
+  if(!ind || !ind.soloLayLog) return;
+  ind.soloLayLog = ind.soloLayLog.filter(e=>e.id!==entryId);
+  await persistAndRender();
+  openIndividualDetail(individualId);
+}
+function renderLayLogSectionContent(ind){
+  const log = combinedLayLog(ind);
+  let html = `<button type="button" class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="openSoloLayLogAddForm('${ind.id}')">+ 혼자 낳은 산란 기록 추가</button>`;
+  if(log.length===0){
+    html += `<div class="readonly-note">아직 기록된 산란 이력이 없어요.</div>`;
+  } else {
+    html += `<div style="max-height:210px;overflow-y:auto;">`;
+    html += log.map(e=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-top:1px dashed var(--border);">
+        <div>
+          <div style="font-size:11px;color:var(--ink-faint);">${esc(e.date)} · ${esc(e.status)}</div>
+          <div style="font-size:13px;color:var(--ink);">${esc(e.source)}</div>
+        </div>
+        ${e.deletable?`<button type="button" onclick="deleteSoloLayLogEntry('${ind.id}','${e.id}')" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:4px 8px;">삭제</button>`:''}
+      </div>
+    `).join('');
+    html += `</div>`;
+  }
+  return html;
 }
 function openIndividualDetail(id){
   const ind = state.individuals.find(i=>i.id===id);
   if(!ind) return;
   const morphLabel = formatMorphFull(ind.morph, ind.morphHet).main;
   const lastMating = latestMatingDateForIndividual(ind.id);
-  const lastInfertile = ind.gender==='암컷' ? combinedLastInfertileLayDate(ind) : null;
+  const lastLayInfo = ind.gender==='암컷' ? combinedLastLayInfo(ind) : null;
   const hasParentInfo = !!(ind.sireName || ind.sireId || ind.damName || ind.damId);
 
   let body = `
@@ -2486,7 +2589,7 @@ function openIndividualDetail(id){
     <div class="form-divider">번식 관련 기록</div>
     <div class="card-datarow" style="border-top:none;">
       <div class="dcell"><div class="lbl">최근 메이팅일</div><div class="val">${lastMating?esc(lastMating):'기록 없음'}</div></div>
-      ${ind.gender==='암컷'?`<div class="dcell"><div class="lbl">최근 무정란 산란일</div><div class="val">${lastInfertile?esc(lastInfertile):'기록 없음'}</div></div>`:''}
+      ${ind.gender==='암컷'?`<div class="dcell"><div class="lbl">최근 산란일</div><div class="val">${lastLayInfo?esc(lastLayInfo):'기록 없음'}</div></div>`:''}
     </div>
   `;
 
@@ -2519,6 +2622,10 @@ function openIndividualDetail(id){
 
   const lastWeight = latestWeightEntry(ind);
   body += collapsibleSection('viewWeight', lastWeight?`성장 보기 · 최근 ${lastWeight.grams}g (${lastWeight.date})`:'성장 보기', renderWeightLogSectionContent('individual', ind), false);
+
+  if(ind.gender==='암컷'){
+    body += collapsibleSection('viewLayLog', lastLayInfo?`산란 기록 · 최근 ${lastLayInfo}`:'산란 기록', renderLayLogSectionContent(ind), false);
+  }
 
   if(ind.memo){
     body += `<div class="form-divider">메모</div><div class="readonly-note">${esc(ind.memo)}</div>`;
@@ -2555,8 +2662,7 @@ function openIndividualForm(id){
       </div>
       <div class="readonly-note" style="margin-top:-8px;">입양(또는 등록)한 날짜를 적어두면, 나중에 문제가 생겼을 때 업체와 소통하거나 기록을 되짚어보기 좋아요.</div>
       <div id="ownFemaleOnlySection" style="display:${data.gender==='암컷'?'block':'none'};">
-        <label class="field full"><span>최근 무정란 산란일 (메이팅 없이 혼자 낳은 경우)</span><input type="date" name="lastSoloInfertileLayDate" value="${esc(data.lastSoloInfertileLayDate||'')}"></label>
-        <div class="readonly-note" style="margin-top:-8px;">메이팅 후 낳은 무정란은 알 탭에서 기록하면 자동으로 잡혀요. 이 칸은 메이팅 없이 혼자 배란·산란한 경우만 직접 적어두는 용도예요.</div>
+        <div class="readonly-note" style="margin-top:0;">무정란 산란 기록(메이팅 없이 혼자 낳은 경우 포함)은 저장 후 상세보기의 '무정란 산란 기록'에서 추가·관리할 수 있어요.</div>
       </div>
       <div class="readonly-note" id="ownAgeNote" style="margin-top:-8px;">${data.hatchDate?`현재 나이: ${ageLabel(data.hatchDate)}`:''}</div>
       <div class="field full">${buildCollapsibleChipGroup('ownPatterns', '패턴', PATTERN_TRAITS, data.morphPatterns||[])}</div>
@@ -4381,7 +4487,7 @@ async function exportExcelBackup(){
       '입양일(등록일)': i.adoptionDate||'',
       '부이름': i.sireName||'', '부모프': i.sireMorph||'', '부헷': i.sireHet||'',
       '모이름': i.damName||'', '모모프': i.damMorph||'', '모헷': i.damHet||'',
-      '최근무정란산란일(혼자낳음)': i.lastSoloInfertileLayDate||'',
+      '산란기록(혼자낳음)': sortedSoloLayLog(i).map(e=>`${e.date}(${e.status||'미상'})`).join(', '),
       '최근체중(g)': (latestWeightEntry(i)||{}).grams||'', '최근체중측정일': (latestWeightEntry(i)||{}).date||'',
       '킵여부': i.keep||'', '브리딩여부': i.breeding||'', '프루븐여부': i.provenStatus||'아니오', '메인서브여부': i.main||'', '현재상태': i.status||'',
       '분양플랫폼': i.salePlatform||'', '분양일': i.saleDate||'', '분양가': i.salePrice||'',
