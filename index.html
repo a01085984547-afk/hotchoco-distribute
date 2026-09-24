@@ -3513,11 +3513,12 @@ function openEggDetail(clutchId, eggNum){
     <div class="readonly-note" style="font-size:13px;">${esc(c.damName)} × ${esc(c.sireName)} · ${esc(c.clutchNum)}차 클러치 · 알 ${eggNum}</div>
     ${warnings.length?`<div class="bloodline-banner danger" style="margin-top:8px;">⚠️ 이 알은 <b>${esc(warnings.join(', '))}</b> 상태로 표시돼 있어요. 다른 알보다 주의 깊게 지켜봐 주세요.</div>`:''}
     <div class="card-datarow" style="border-top:none;padding-top:4px;">
+      <div class="dcell"><div class="lbl">산란일</div><div class="val">${c.layDate?esc(c.layDate):'기록 없음'}</div></div>
       <div class="dcell"><div class="lbl">유/무정</div><div class="val">${esc(status)}</div></div>
-      <div class="dcell"><div class="lbl">산란 시 상태</div><div class="val">${esc(condition)}</div></div>
       <div class="dcell"><div class="lbl">경과일</div><div class="val">D+${days!==null?days:'-'}</div></div>
     </div>
     <div class="card-datarow">
+      <div class="dcell"><div class="lbl">산란 시 상태</div><div class="val">${esc(condition)}</div></div>
       <div class="dcell"><div class="lbl">인큐베이션 중 이상</div><div class="val">${esc(incubationIssue)}</div></div>
       <div class="dcell"><div class="lbl">온도</div><div class="val">${temp}°C</div></div>
     </div>
