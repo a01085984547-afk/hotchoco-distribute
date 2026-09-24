@@ -3383,7 +3383,7 @@ function renderEggTab(){
     </select>
   </div>`;
   if(endedCount>0){
-    html += `<div class="searchbar" style="margin-top:-6px;"><button type="button" class="chip-toggle${showEndedEggGroups?' chip-selected':''}" onclick="toggleShowEndedEggGroups()">${showEndedEggGroups?'종료 같이 보는 중 ✓':'종료 같이 보기 ('+endedCount+'쌍 숨김)'}</button></div>`;
+    html += `<div class="searchbar" style="margin-top:-6px;"><button type="button" class="chip-toggle${showEndedEggGroups?' chip-selected':''}" onclick="toggleShowEndedEggGroups()">${showEndedEggGroups?'종료 같이 보는 중 ✓':'종료 같이 보기'}</button></div>`;
   }
 
   if(groups.length===0){
