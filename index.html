@@ -4120,7 +4120,7 @@ async function confirmPromote(hatchId){
 const FIREBASE_CONFIG_KEY = 'hotchoco_firebase_config_v1';
 const RECORDS_COLLECTION = 'hotchoco_records';
 const OLD_SYNC_DOC_PATH = ['hotchoco_shared', 'state']; // 예전(문서 하나짜리) 동기화 방식 - 마이그레이션 확인용으로만 참조
-const KIND_TO_LIST = { individual:'individuals', mating:'matings', clutch:'clutches', hatchling:'hatchlings' };
+const KIND_TO_LIST = { individual:'individuals', mating:'matings', clutch:'clutches', hatchling:'hatchlings', externalLineageRef:'externalLineageRefs' };
 
 let syncStatus = 'local'; // 'local' | 'connecting' | 'synced' | 'error'
 let firestoreDb = null;
@@ -4173,10 +4173,6 @@ function initSync(){
     syncStatus = 'connecting';
     const ok = await loadFirebaseSDK();
     if(!ok){ syncStatus='error'; resolve(); return; }
-    /* individuals/matings/clutches/hatchlings 외에, 기기별 문서 동기화 대상이 아닌 로컬 전용
-       데이터(외부 혈통 참조 등)는 동기화 초기화 과정에서 state가 통째로 교체돼도 사라지지
-       않도록 미리 챙겨뒀다가 아래에서 다시 붙여준다. */
-    const localOnlyBackup = { externalLineageRefs: state.externalLineageRefs || [] };
     try{
       if(!firebase.apps || firebase.apps.length===0){
         firebase.initializeApp(cfg);
@@ -4207,7 +4203,6 @@ function initSync(){
               const oldState = JSON.parse(oldData.json);
               if(oldState && (oldState.individuals||[]).length + (oldState.matings||[]).length + (oldState.clutches||[]).length + (oldState.hatchlings||[]).length > 0){
                 state = oldState;
-                if(!state.externalLineageRefs) state.externalLineageRefs = localOnlyBackup.externalLineageRefs;
                 migratedFromOldDoc = true;
               }
             }
@@ -4216,7 +4211,12 @@ function initSync(){
         await pushAllEntitiesToCloud();
         if(migratedFromOldDoc){ render(); }
       } else {
-        const newState = { individuals:[], matings:[], clutches:[], hatchlings:[] };
+        /* 이번에 외부 혈통 참조를 처음으로 동기화 대상에 포함시켰다 - 그래서 이 기기에 이미
+           있던(아직 한 번도 클라우드에 올라간 적 없는) 외부 혈통 참조가 있으면, 클라우드 스냅샷으로
+           통째로 덮어쓰기 전에 미리 챙겨뒀다가 병합해서 다시 올려준다(안 그러면 이번 이관 과정에서
+           그 데이터만 영영 사라짐). */
+        const localOnlyRefs = state.externalLineageRefs || [];
+        const newState = { individuals:[], matings:[], clutches:[], hatchlings:[], externalLineageRefs:[] };
         lastSyncedSnapshot = {};
         snap.forEach(doc=>{
           const d = doc.data();
@@ -4226,7 +4226,14 @@ function initSync(){
           lastSyncedSnapshot[doc.id] = JSON.stringify(d.data);
         });
         state = newState;
-        state.externalLineageRefs = localOnlyBackup.externalLineageRefs;
+        const cloudRefIds = new Set(state.externalLineageRefs.map(r=>r.id));
+        const unsyncedLocalRefs = localOnlyRefs.filter(r=>!cloudRefIds.has(r.id));
+        if(unsyncedLocalRefs.length){
+          state.externalLineageRefs = state.externalLineageRefs.concat(unsyncedLocalRefs);
+          /* 병합만 해두고 끝내면, 다음 기기가 먼저 스냅샷을 받아갈 때까지는 여전히 클라우드에
+             없는 상태라 위험하다 - 바로 업로드까지 마쳐서 이 순간부터 안전하게 만든다. */
+          await pushChangedEntitiesToCloud();
+        }
       }
       syncStatus = 'synced';
       if(!resolved){ resolved = true; clearTimeout(timeout); resolve(); }
