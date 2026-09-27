@@ -2423,15 +2423,27 @@ function renderWeightLogSectionContent(kind, entity){
     html += `<div class="readonly-note">아직 기록된 체중이 없어요.</div>`;
   } else {
     html += `<div style="max-height:210px;overflow-y:auto;">`;
-    html += log.map(w=>`
+    /* 최신순으로 정렬돼 있으니, 바로 다음(더 오래된) 기록과 비교해서 전 대비 증감을 같이 보여준다.
+       제일 오래된 기록(비교 대상이 없는 마지막 항목)은 증감 없이 무게만 보여준다. */
+    html += log.map((w,idx)=>{
+      const prev = log[idx+1];
+      let diffHtml = '';
+      if(prev){
+        const diff = Math.round((w.grams - prev.grams)*10)/10;
+        if(diff>0) diffHtml = `<span style="color:var(--safe);font-size:12px;font-weight:700;margin-left:6px;">(+${diff}g)</span>`;
+        else if(diff<0) diffHtml = `<span style="color:var(--danger);font-size:12px;font-weight:700;margin-left:6px;">(${diff}g)</span>`;
+        else diffHtml = `<span style="color:var(--ink-faint);font-size:12px;font-weight:700;margin-left:6px;">(변동 없음)</span>`;
+      }
+      return `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-top:1px dashed var(--border);">
         <div>
           <div style="font-size:11px;color:var(--ink-faint);">${esc(w.date)}</div>
-          <div style="font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--pine-deep);">${w.grams}g</div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--pine-deep);">${w.grams}g${diffHtml}</div>
         </div>
         <button type="button" onclick="deleteWeightLogEntry('${kind}','${entity.id}','${w.id}')" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:4px 8px;">삭제</button>
       </div>
-    `).join('');
+    `;
+    }).join('');
     html += `</div>`;
   }
   return html;
