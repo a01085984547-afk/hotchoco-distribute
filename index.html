@@ -2989,7 +2989,7 @@ function renderMatingCard(m){
     if(cs.length===0){
       rows = `<div class="readonly-note" style="margin:6px 0 10px;">아직 기록된 알이 없어요.</div>`;
     } else {
-      cs.forEach(c=>{
+      cs.forEach((c,idx)=>{
         const anyPending = isPendingHatch(c.egg1Status) || isPendingHatch(c.egg2Status);
         const everFertile = wasEverFertile(c.egg1Status) || wasEverFertile(c.egg2Status);
         const anyStopped = c.egg1Status==='중지' || c.egg2Status==='중지';
@@ -3001,6 +3001,11 @@ function renderMatingCard(m){
         else if(anyStopped) rightText = '중지';
         else rightText = '-';
         const abnormalNotes = [...eggWarningLabels(c,1), ...eggWarningLabels(c,2)];
+        /* 바로 이전 차수(더 먼저 산란한 알)와 날짜를 비교해서 산란 주기(며칠 만에 또 낳았는지)를
+           날짜 옆에 같이 보여준다. 1차(비교 대상 없음)는 표시하지 않는다. */
+        const prevClutch = idx>0 ? cs[idx-1] : null;
+        const intervalDays = (prevClutch && prevClutch.layDate && c.layDate) ? daysBetween(prevClutch.layDate, c.layDate) : null;
+        const intervalHtml = intervalDays!==null ? ` <span style="color:var(--ink-faint);font-size:11px;font-weight:600;">(${intervalDays}일 만)</span>` : '';
         rows += `<div class="clutch-row" onclick="openClutchForm('${c.id}', '${m.id}')">
           <div class="cnum">${esc(c.clutchNum)}차</div>
           <div class="cmid">
@@ -3008,7 +3013,7 @@ function renderMatingCard(m){
               <span class="dot ${eggDotClass(c.egg1Status)} ${eggWarningLabels(c,1).length?'egg-warn':''}"></span>
               <span class="dot ${eggDotClass(c.egg2Status)} ${eggWarningLabels(c,2).length?'egg-warn':''}"></span>
             </span>
-            &nbsp;${esc(c.layDate)||'-'}${abnormalNotes.length?` <span class="chip danger" style="padding:1px 7px;font-size:10px;">⚠️ ${esc(abnormalNotes.join('·'))}</span>`:''}
+            &nbsp;${esc(c.layDate)||'-'}${intervalHtml}${abnormalNotes.length?` <span class="chip danger" style="padding:1px 7px;font-size:10px;">⚠️ ${esc(abnormalNotes.join('·'))}</span>`:''}
           </div>
           <div class="cright">${rightText}</div>
         </div>`;
