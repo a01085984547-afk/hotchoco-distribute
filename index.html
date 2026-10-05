@@ -711,6 +711,15 @@ function migrateSoloLayLogRename(st){
   });
   return changed;
 }
+/* '정상(도자기)' 표기를 '도자기'로 이름만 바꿨다 - 기존 클러치에 저장된 값도 새 이름으로 맞춰준다. */
+function migrateEggConditionLabel(st){
+  let changed = false;
+  (st.clutches||[]).forEach(c=>{
+    if(c.egg1Condition==='정상(도자기)'){ c.egg1Condition='도자기'; changed=true; }
+    if(c.egg2Condition==='정상(도자기)'){ c.egg2Condition='도자기'; changed=true; }
+  });
+  return changed;
+}
 /* ---------------- storage ---------------- */
 /* 저장소: Claude 아티팩트 환경(window.storage)에서 열었을 때는 그걸 쓰고,
    폰에 설치해서 독립 실행할 때는 브라우저 localStorage로 자동 전환된다. */
@@ -754,7 +763,8 @@ async function loadState(){
   const migratedBreedingReset = migrateResetBreedingForEndedMatings(state);
   const migratedSoloInfertileLog = migrateSoloInfertileLogArray(state);
   const migratedSoloLayLogRename = migrateSoloLayLogRename(state);
-  if(fromSeed || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset || migratedSoloInfertileLog || migratedSoloLayLogRename){ await saveState(); }
+  const migratedEggCondition = migrateEggConditionLabel(state);
+  if(fromSeed || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset || migratedSoloInfertileLog || migratedSoloLayLogRename || migratedEggCondition){ await saveState(); }
 }
 async function saveState(){
   await storageSet(STORAGE_KEY, JSON.stringify(state));
@@ -884,10 +894,12 @@ function eggDotClass(status){
 /* 알 상태 - 두 가지 별개 시점을 구분해서 기록한다
    1) 산란 당시 껍데기 겉모양(도자기=정상 / 눈꽃알 / 골프공) - 낳을 때 한 번 정해지는 것
    2) 인큐베이션(보관) 중에 나중에 생기는 문제(함몰/곰팡이) - 시간이 지나며 발생할 수 있는 것 */
-const EGG_CONDITION_OPTIONS = ['정상(도자기)','눈꽃알','골프공'];
+const EGG_CONDITION_OPTIONS = ['도자기','부분 거칢','눈꽃알','골프공'];
 const EGG_INCUBATION_ISSUE_OPTIONS = ['없음','함몰','곰팡이','함몰+곰팡이','기타 이상'];
+/* '정상(도자기)'는 예전 표기 - 이름만 '도자기'로 바꿨을 뿐 같은 뜻이라, 예전 데이터와도
+   호환되도록 둘 다 정상으로 인정한다(마이그레이션으로 기존 데이터도 새 이름으로 맞춰준다). */
 function isEggConditionAbnormal(cond){
-  return !!cond && cond!=='정상(도자기)' && cond!=='정상';
+  return !!cond && cond!=='도자기' && cond!=='정상(도자기)' && cond!=='정상';
 }
 function isIncubationIssueAbnormal(issue){
   return !!issue && issue!=='없음';
@@ -3005,7 +3017,7 @@ function renderMatingCard(m){
            날짜 옆에 같이 보여준다. 1차(비교 대상 없음)는 표시하지 않는다. */
         const prevClutch = idx>0 ? cs[idx-1] : null;
         const intervalDays = (prevClutch && prevClutch.layDate && c.layDate) ? daysBetween(prevClutch.layDate, c.layDate) : null;
-        const intervalHtml = intervalDays!==null ? ` <span style="color:var(--ink-faint);font-size:11px;font-weight:600;">(${intervalDays}일 만)</span>` : '';
+        const intervalHtml = intervalDays!==null ? ` <span style="color:var(--ink-faint);font-size:11px;font-weight:600;">(+${intervalDays}일)</span>` : '';
         rows += `<div class="clutch-row" onclick="openClutchForm('${c.id}', '${m.id}')">
           <div class="cnum">${esc(c.clutchNum)}차</div>
           <div class="cmid">
@@ -3213,7 +3225,7 @@ function openClutchForm(id, matingId){
   const mating = state.matings.find(m=>m.id===(item?item.matingId:matingId));
   const data = item || {
     egg1Status:'유정', egg2Status:'유정',
-    egg1Condition:'정상(도자기)', egg2Condition:'정상(도자기)',
+    egg1Condition:'도자기', egg2Condition:'도자기',
     egg1IncubationIssue:'없음', egg2IncubationIssue:'없음',
     incubationTemp: mating ? mating.incubationTemp : DEFAULT_INCUBATION_TEMP,
     clutchNum: mating ? nextClutchNum(mating) : 1,
@@ -3229,9 +3241,9 @@ function openClutchForm(id, matingId){
         <label class="field"><span>산란 차수</span><input type="number" name="clutchNum" value="${esc(data.clutchNum||'')}" min="1"></label>
         <label class="field"><span>산란일</span><input type="date" name="layDate" value="${esc(data.layDate||'')}" onchange="updateClutchHatchPreview()"></label>
         <label class="field"><span>알1 유/무정</span><select name="egg1Status">${selOpts(['유정','무정','중지','미상'],data.egg1Status)}</select></label>
-        <label class="field"><span>알1 산란 시 상태</span><select name="egg1Condition">${selOpts(EGG_CONDITION_OPTIONS,data.egg1Condition||'정상(도자기)')}</select></label>
+        <label class="field"><span>알1 산란 시 상태</span><select name="egg1Condition">${selOpts(EGG_CONDITION_OPTIONS,data.egg1Condition||'도자기')}</select></label>
         <label class="field"><span>알2 유/무정</span><select name="egg2Status">${selOpts(['유정','무정','중지','미상','없음'],data.egg2Status)}</select></label>
-        <label class="field"><span>알2 산란 시 상태</span><select name="egg2Condition">${selOpts(EGG_CONDITION_OPTIONS,data.egg2Condition||'정상(도자기)')}</select></label>
+        <label class="field"><span>알2 산란 시 상태</span><select name="egg2Condition">${selOpts(EGG_CONDITION_OPTIONS,data.egg2Condition||'도자기')}</select></label>
         <label class="field"><span>인큐베이션 온도(°C)</span><input type="number" name="incubationTemp" step="0.1" value="${data.incubationTemp||DEFAULT_INCUBATION_TEMP}" onchange="updateClutchHatchPreview()"></label>
       </div>
       <div class="readonly-note" style="margin-top:-8px;">"산란 시 상태"는 알을 낳을 때 껍데기 겉모양이에요(도자기처럼 매끈하면 정상). 유/무정 여부랑은 별개 정보예요. "중지"는 유정이었다가 발생 도중 죽은 경우예요.</div>
@@ -3477,7 +3489,7 @@ function openEggDetail(clutchId, eggNum){
   const c = state.clutches.find(x=>x.id===clutchId);
   if(!c) return;
   const status = eggNum===1 ? c.egg1Status : c.egg2Status;
-  const condition = (eggNum===1 ? c.egg1Condition : c.egg2Condition) || '정상(도자기)';
+  const condition = (eggNum===1 ? c.egg1Condition : c.egg2Condition) || '도자기';
   const incubationIssue = (eggNum===1 ? c.egg1IncubationIssue : c.egg2IncubationIssue) || '없음';
   const warnings = eggWarningLabels(c, eggNum);
   const label = eggNum===1 ? 'A' : 'B';
