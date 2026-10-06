@@ -1452,6 +1452,8 @@ function renderFab(){
 }
 
 /* ---------------- dashboard ---------------- */
+let dashboardWatchEggsExpanded = false;
+function toggleDashboardWatchEggs(){ dashboardWatchEggsExpanded = !dashboardWatchEggsExpanded; render(); }
 function renderDashboard(){
   const ind = state.individuals;
   const heldCount = ind.filter(i=>i.status==='보유').length;
@@ -1514,7 +1516,8 @@ function renderDashboard(){
   });
   alerts.sort((a,b)=>a.diff-b.diff);
 
-  /* 껍데기 상태가 이상(눈꽃알 등)한데 아직 부화 전인 알들 - 날짜 상관없이 항상 눈에 띄게 */
+  /* 껍데기 상태가 이상(눈꽃알 등)한데 아직 부화 전인 알들 - 날짜 상관없이 항상 눈에 띄게.
+     산란일 대비 경과일(D+N)도 같이 보여줘서 얼마나 됐는지 한눈에 알 수 있게 한다. */
   const watchEggs = [];
   openFertileClutches.forEach(c=>{
     ['A','B'].forEach((label,idx)=>{
@@ -1523,19 +1526,28 @@ function renderDashboard(){
       if(c[sf]==='유정' && !hatchlingForEgg(c.id,label)){
         const warnings = eggWarningLabels(c, num);
         if(warnings.length){
-          watchEggs.push({ clutchId:c.id, title:`${c.damName} × ${c.sireName}`, sub:`${c.clutchNum}차 알 ${label} · ${warnings.join(', ')}` });
+          const days = c.layDate ? daysBetween(c.layDate, todayISO()) : null;
+          watchEggs.push({ clutchId:c.id, title:`${c.damName} × ${c.sireName}`, sub:`${c.clutchNum}차 알 ${label} · ${warnings.join(', ')}${days!==null?` · D+${days}`:''}` });
         }
       }
     });
   });
   if(watchEggs.length>0){
-    html += `<div class="section-head"><h2>⚠️ 주의 깊게 볼 알</h2></div>`;
-    watchEggs.forEach(w=>{
+    /* 개체 수가 늘어날수록 홈 화면이 한없이 길어지지 않도록, 기본은 3개까지만 보여주고
+       나머지는 펼쳐야 보이게 접어둔다. */
+    const WATCH_EGGS_COLLAPSE_LIMIT = 3;
+    const showAll = dashboardWatchEggsExpanded || watchEggs.length<=WATCH_EGGS_COLLAPSE_LIMIT;
+    const visibleWatchEggs = showAll ? watchEggs : watchEggs.slice(0, WATCH_EGGS_COLLAPSE_LIMIT);
+    html += `<div class="section-head"><h2>⚠️ 주의 깊게 볼 알 (${watchEggs.length}건)</h2></div>`;
+    visibleWatchEggs.forEach(w=>{
       html += `<div class="alert-card danger" onclick="switchTab('egg')" style="cursor:pointer;">
         <div class="icon">🥚</div>
         <div class="body"><b>${esc(w.title)}</b><span>${esc(w.sub)}</span></div>
       </div>`;
     });
+    if(watchEggs.length>WATCH_EGGS_COLLAPSE_LIMIT){
+      html += `<button type="button" class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="toggleDashboardWatchEggs()">${showAll?'접기':`+ ${watchEggs.length-WATCH_EGGS_COLLAPSE_LIMIT}건 더 보기`}</button>`;
+    }
   }
 
   html += `<div class="section-head"><h2>다가오는 일정</h2></div>`;
