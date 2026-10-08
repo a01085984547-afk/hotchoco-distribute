@@ -1482,10 +1482,10 @@ function renderDashboard(){
       <div class="stat-card"><div class="num">${totalUniqueCount}</div><div class="lbl">현재 사육 중인 개체 수</div></div>
     </div>
     <div class="stat-grid">
-      <div class="stat-card"><div class="num">${heldCount}</div><div class="lbl">등록 개체</div></div>
-      <div class="stat-card"><div class="num">${totalHatchlingCount}</div><div class="lbl">해칭개체수</div></div>
-      <div class="stat-card"><div class="num">${activeMatings.length}</div><div class="lbl">진행 중 메이팅</div></div>
-      <div class="stat-card"><div class="num">${openEggCount}</div><div class="lbl">부화 대기 알</div></div>
+      <div class="stat-card" onclick="switchTab('individual')" style="cursor:pointer;"><div class="num">${heldCount}</div><div class="lbl">등록 개체</div></div>
+      <div class="stat-card" onclick="switchTab('hatchling')" style="cursor:pointer;"><div class="num">${totalHatchlingCount}</div><div class="lbl">해칭개체수</div></div>
+      <div class="stat-card" onclick="switchTab('mating')" style="cursor:pointer;"><div class="num">${activeMatings.length}</div><div class="lbl">진행 중 메이팅</div></div>
+      <div class="stat-card" onclick="switchTab('egg')" style="cursor:pointer;"><div class="num">${openEggCount}</div><div class="lbl">부화 대기 알</div></div>
     </div>
   `;
 
