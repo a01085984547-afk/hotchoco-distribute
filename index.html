@@ -57,6 +57,9 @@ main{padding:16px 16px 100px;}
 .searchbar{display:flex;gap:8px;margin-bottom:14px;}
 .searchbar input{flex:1;border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-sm);padding:10px 12px;font-size:14px;font-family:var(--font-body);color:var(--ink);}
 .searchbar input:focus{outline:2px solid var(--moss);outline-offset:-1px;}
+.search-wrap{position:relative;flex:1;display:flex;}
+.search-wrap input{padding-right:36px;}
+.search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:24px;height:24px;border-radius:50%;border:none;background:var(--border);color:var(--ink-soft);font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;padding:0;}
 
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 15px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer;}
 .card:active{background:var(--surface-2);}
@@ -1583,6 +1586,21 @@ function setIndividualHetFilter(v){ individualHetFilter = v; updateIndividualLis
 function setIndividualGenderFilter(v){ individualGenderFilter = v; updateIndividualListBody(); }
 function setIndividualMainFilter(v){ individualMainFilter = v; updateIndividualListBody(); }
 function setIndividualStageFilter(v){ individualStageFilter = v; updateIndividualListBody(); }
+/* 검색창 공용: 입력값이 있을 때만 오른쪽 끝에 ✕ 버튼이 보이고, 누르면 비우고 목록을 원래대로 되돌린다 */
+function searchBoxHtml(placeholder, value, handler, idAttr){
+  return `<div class="search-wrap"><input ${idAttr?`id="${idAttr}" `:''}placeholder="${placeholder}" value="${esc(value)}" oninput="${handler}(this.value);syncSearchClear(this)"><button type="button" class="search-clear" style="display:${value?'flex':'none'};" aria-label="검색어 지우기" onclick="clearSearch(this,'${handler}')">✕</button></div>`;
+}
+function syncSearchClear(input){
+  const b = input.parentNode.querySelector('.search-clear');
+  if(b) b.style.display = input.value ? 'flex' : 'none';
+}
+function clearSearch(btn, handler){
+  const input = btn.parentNode.querySelector('input');
+  input.value = '';
+  window[handler]('');
+  btn.style.display = 'none';
+  input.focus();
+}
 function setIndividualFilter(v){ listFilters.individual = v; updateIndividualListBody(); }
 
 function getFilteredIndividuals(){
@@ -1744,7 +1762,7 @@ function renderIndividualList(){
       <button type="button" id="individual-view-compact-btn" class="chip-toggle ${individualViewMode==='compact'?'chip-selected':''}" style="flex:1;" onclick="setIndividualViewMode('compact')">간단히 보기</button>
     </div>
     <div class="searchbar">
-      <input placeholder="이름·ID·모프로 검색" value="${esc(listFilters.individual)}" oninput="setIndividualFilter(this.value)">
+      ${searchBoxHtml('이름·ID·모프로 검색', listFilters.individual, 'setIndividualFilter')}
     </div>
     <div class="searchbar">
       <select onchange="setIndividualSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
@@ -1957,7 +1975,7 @@ function renderHatchlingList(){
       <button type="button" id="hatchling-view-card-btn" class="chip-toggle ${hatchlingViewMode==='card'?'chip-selected':''}" style="flex:1;" onclick="setHatchlingViewMode('card')">카드형</button>
       <button type="button" id="hatchling-view-compact-btn" class="chip-toggle ${hatchlingViewMode==='compact'?'chip-selected':''}" style="flex:1;" onclick="setHatchlingViewMode('compact')">간단히 보기</button>
     </div>
-    <div class="searchbar"><input placeholder="ID·모프·부모 이름으로 검색" value="${esc(listFilters.hatchling)}" oninput="setHatchlingFilter(this.value)"></div>
+    <div class="searchbar">${searchBoxHtml('ID·모프·부모 이름으로 검색', listFilters.hatchling, 'setHatchlingFilter')}</div>
     <div class="searchbar">
       <select onchange="setHatchlingSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         ${sortOptions.map(o=>`<option value="${o.v}" ${o.v===hatchlingSort?'selected':''}>${o.l}</option>`).join('')}
@@ -2894,7 +2912,7 @@ function renderMatingList(){
   const items = getFilteredMatings();
   const endedCount = state.matings.filter(m=>normalizeMatingStatus(m.status)==='산란 종료').length;
   return `<div class="section-head"><h2>메이팅 관리</h2><span class="count" id="mating-count">${items.length} / ${state.matings.length}쌍</span></div>
-    <div class="searchbar"><input placeholder="암컷·수컷 이름으로 검색" value="${esc(listFilters.mating)}" oninput="setMatingFilter(this.value)"></div>
+    <div class="searchbar">${searchBoxHtml('암컷·수컷 이름으로 검색', listFilters.mating, 'setMatingFilter')}</div>
     <div class="searchbar">
       <select onchange="setMatingSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="recent" ${matingSort==='recent'?'selected':''}>최근 메이팅일 최신순</option>
@@ -3617,7 +3635,7 @@ function renderEntityPickerModal(){
   const items = getEntityPickerList();
   const body = `
     <div class="searchbar">
-      <input id="entity-picker-search" placeholder="이름·ID·모프로 검색" value="${esc(entityPickerState.query)}" oninput="setEntityPickerQuery(this.value)">
+      ${searchBoxHtml('이름·ID·모프로 검색', entityPickerState.query, 'setEntityPickerQuery', 'entity-picker-search')}
     </div>
     <div class="searchbar">
       <button type="button" class="chip-toggle ${entityPickerState.typeFilter===''?'chip-selected':''}" style="flex:1;" onclick="setEntityPickerType('')">전체</button>
