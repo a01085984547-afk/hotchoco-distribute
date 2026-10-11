@@ -1811,6 +1811,10 @@ let hatchlingHetFilter = '';
 function setHatchlingHetFilter(v){ hatchlingHetFilter = v; updateHatchlingListBody(); }
 let hatchlingGenderFilter = '';
 function setHatchlingGenderFilter(v){ hatchlingGenderFilter = v; updateHatchlingListBody(); }
+/* 개체로 등록된 해칭개체는 '보유'와 구분해서 보여준다(저장값은 그대로 두고 화면용으로만 계산) */
+function hatchlingDisplayStatus(h){
+  return (h.promotedToId && h.status==='보유') ? '등록 개체' : h.status;
+}
 let hatchlingStatusFilter = '';
 function setHatchlingFilter(v){ listFilters.hatchling = v; updateHatchlingListBody(); }
 
@@ -1837,9 +1841,9 @@ function getFilteredHatchlings(){
     items = items.filter(h=>h.gender===hatchlingGenderFilter);
   }
   if(hatchlingStatusFilter){
-    items = items.filter(h=>h.status===hatchlingStatusFilter);
+    items = items.filter(h=>hatchlingDisplayStatus(h)===hatchlingStatusFilter);
   } else if(!hatchlingShowSold){
-    items = items.filter(h=>h.status!=='분양 완료');
+    items = items.filter(h=>hatchlingDisplayStatus(h)!=='분양 완료');
   }
   return items;
 }
@@ -1862,12 +1866,12 @@ function refreshHatchlingFilterCounts(){
   searchOnly.forEach(h=>{
     if(h.morph) morphCounts[h.morph] = (morphCounts[h.morph]||0)+1;
     if(h.morphHet) hetCounts[h.morphHet] = (hetCounts[h.morphHet]||0)+1;
-    if(h.status) statusCounts[h.status] = (statusCounts[h.status]||0)+1;
+    if(h.status){ const ds=hatchlingDisplayStatus(h); statusCounts[ds] = (statusCounts[ds]||0)+1; }
     if(h.gender) genderCounts[h.gender] = (genderCounts[h.gender]||0)+1;
   });
   const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
   const hetList = HET_OPTIONS.filter(h=>h!=='없음');
-  const statusList = ['보유','분양 중','분양 완료','사망','기타'];
+  const statusList = ['보유','등록 개체','분양 중','분양 완료','사망','기타'];
 
   const morphSel = document.getElementById('hatchling-morph-filter');
   if(morphSel) morphSel.innerHTML = `<option value="">모프 전체 보기</option>` +
@@ -1923,7 +1927,7 @@ function renderHatchlingListBody(items){
         ${avatarHtml(h, 'hatchling')}
         <div><div class="card-title">${esc(h.morph)||'모프 미정'}${h.morphHet?(' <span style="font-size:12px;color:var(--ink-faint);font-weight:600;">'+esc(formatHetDisplay(h.morphHet))+'</span>'):''}</div><div class="card-id">${esc(h.id)} (알 ${esc(h.eggLabel)})</div></div>
       </div>
-      <div class="chip ${h.status==='보유'?'':'muted'}">${esc(h.status)}</div>
+      <div class="chip ${h.status==='보유'&&!h.promotedToId?'':'muted'}">${esc(hatchlingDisplayStatus(h))}</div>
     </div>
     <div class="card-meta">
       <span class="chip muted">${esc(h.gender)}</span>
@@ -1932,7 +1936,6 @@ function renderHatchlingListBody(items){
       ${h.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
       ${(()=>{const w=latestWeightEntry(h);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
       <span class="chip ${growthStageChipClass(growthStageOfHatchling(h))}">${esc(growthStageOfHatchling(h))}</span>
-      ${h.promotedToId?`<span class="chip">개체 등록됨</span>`:''}
       ${h.price?`<span class="chip muted">${fmtMoney(h.price)}</span>`:''}
     </div>
     <div class="card-sub">부모 ${esc(h.damName)} × ${esc(h.sireName)} · 해칭일 ${esc(h.hatchDate)||'-'}${h.hatchDate?` (${ageLabel(h.hatchDate)})`:''}${(()=>{const c=state.clutches.find(c=>c.id===h.clutchId);return c&&c.clutchNum?' · '+esc(c.clutchNum)+'차':'';})()}</div>
@@ -1955,12 +1958,12 @@ function renderHatchlingList(){
   searchOnly.forEach(h=>{
     if(h.morph) morphCounts[h.morph] = (morphCounts[h.morph]||0)+1;
     if(h.morphHet) hetCounts[h.morphHet] = (hetCounts[h.morphHet]||0)+1;
-    if(h.status) statusCounts[h.status] = (statusCounts[h.status]||0)+1;
+    if(h.status){ const ds=hatchlingDisplayStatus(h); statusCounts[ds] = (statusCounts[ds]||0)+1; }
     if(h.gender) genderCounts[h.gender] = (genderCounts[h.gender]||0)+1;
   });
   const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
   const hetList = HET_OPTIONS.filter(h=>h!=='없음');
-  const statusList = ['보유','분양 중','분양 완료','사망','기타'];
+  const statusList = ['보유','등록 개체','분양 중','분양 완료','사망','기타'];
   const sortOptions = [
     {v:'age_desc',l:'개월순(최신 해칭)'},
     {v:'age_asc',l:'개월순(오래된 해칭)'},
@@ -3913,8 +3916,7 @@ function openHatchlingDetail(id){
       ${(h.morphColors||[]).map(cl=>`<span class="chip muted">${esc(cl)}</span>`).join('')}
       ${h.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
       <span class="chip ${growthStageChipClass(growthStageOfHatchling(h))}">${esc(growthStageOfHatchling(h))}</span>
-      ${h.status?`<span class="chip ${h.status==='보유'?'':'muted'}">${esc(h.status)}</span>`:''}
-      ${h.promotedToId?`<span class="chip">개체 등록됨</span>`:''}
+      ${h.status?`<span class="chip ${h.status==='보유'&&!h.promotedToId?'':'muted'}">${esc(hatchlingDisplayStatus(h))}</span>`:''}
     </div>
     <div class="readonly-note">부모 ${esc(h.damName)} × ${esc(h.sireName)}${c?' · '+esc(c.clutchNum)+'차 클러치':''}</div>
     <div class="form-divider">해칭 정보</div>
@@ -3992,7 +3994,7 @@ function openHatchlingForm(id, prefill){
     <div class="form-divider">개체 등록</div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">이 해칭개체를 정식 '개체'로 등록하면 이름을 붙여서 개체관리 목록과 혈통검사에서 계속 관리할 수 있어요.</p>
     <button type="button" class="btn btn-ghost btn-block" onclick="promoteHatchling('${id}')">이 개체를 '개체'로 등록하기 →</button>
-  ` : (data.promotedToId ? `<div class="badge-link">개체 등록됨: ${esc(data.promotedToId)}</div>` : '');
+  ` : (data.promotedToId ? `<div class="badge-link">등록 개체: ${esc(data.promotedToId)}</div>` : '');
 
   const body = `
     <form id="hatchling-form" onsubmit="event.preventDefault(); saveHatchling('${id||''}');">
