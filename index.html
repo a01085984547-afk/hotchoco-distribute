@@ -3387,7 +3387,14 @@ function isEggGroupFullyDone(clutches, mating){
 function renderEggTab(){
   const breakdown = getTempHatchBreakdown();
 
-  let html = `<div class="section-head"><h2>산란·알</h2></div>
+  /* 부화 대기 알 수: 유정란 중 아직 해칭 기록이 없는 알 (홈 화면 '부화 대기 알'과 같은 기준) */
+  let waitingEggTotal = 0;
+  state.clutches.forEach(c=>{
+    if(c.egg1Status==='유정' && !hatchlingForEgg(c.id,'A')) waitingEggTotal++;
+    if(c.egg2Status==='유정' && !hatchlingForEgg(c.id,'B')) waitingEggTotal++;
+  });
+
+  let html = `<div class="section-head"><h2>산란·알</h2><span class="chip">부화 대기 ${waitingEggTotal}개</span></div>
   <div class="section-sub">페어를 누르면 그 페어가 낳은 알 전체가 보여요. 부화한 알은 초록, 부화 대기 중인 알은 경과일이 카운트되고, 무정란은 회색으로 표시돼요.</div>
   <div class="chipgroup-wrap">
     <button type="button" class="chipgroup-toggle" onclick="toggleTempBreakdown()">
