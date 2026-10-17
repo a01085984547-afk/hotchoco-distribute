@@ -1843,7 +1843,7 @@ function getFilteredHatchlings(){
   if(hatchlingStatusFilter){
     items = items.filter(h=>hatchlingDisplayStatus(h)===hatchlingStatusFilter);
   } else if(!hatchlingShowSold){
-    items = items.filter(h=>hatchlingDisplayStatus(h)!=='분양 완료');
+    items = items.filter(h=>{ const ds=hatchlingDisplayStatus(h); return ds!=='분양 완료' && ds!=='등록 개체'; });
   }
   return items;
 }
@@ -2005,7 +2005,7 @@ function renderHatchlingList(){
         <option value="">상태 전체 보기</option>
         ${statusList.map(s=>`<option value="${esc(s)}" ${s===hatchlingStatusFilter?'selected':''}>${esc(s)}${statusCounts[s]?' ('+statusCounts[s]+'마리)':''}</option>`).join('')}
       </select>
-      <button type="button" id="hatchling-show-sold-btn" class="chip-toggle ${hatchlingShowSold?'chip-selected':''}" onclick="toggleHatchlingShowSold()" style="flex:1;">분양완료 같이 보기</button>
+      <button type="button" id="hatchling-show-sold-btn" class="chip-toggle ${hatchlingShowSold?'chip-selected':''}" onclick="toggleHatchlingShowSold()" style="flex:1;padding:0 10px;font-size:13px;font-weight:400;border-radius:var(--radius-sm);">분양·등록 같이 보기</button>
     </div>
     <div id="hatchling-list-body">${renderHatchlingListBody(items)}</div>`;
 }
