@@ -3094,29 +3094,60 @@ function renderMatingCard(m){
 }
 
 /* ---------------- 메이팅 기록(재메이팅) 추가 ---------------- */
-function openMatingLogForm(matingId){
+function openMatingLogForm(matingId, oldDate){
   const m = state.matings.find(x=>x.id===matingId);
   if(!m) return;
+  const editing = !!oldDate;
   const body = `
-    <form id="matinglog-form" onsubmit="event.preventDefault(); saveMatingLog('${matingId}');">
-      <p style="font-size:13px;color:var(--ink-soft);">새 메이팅 날짜를 기록하면 '최근 메이팅일'이 이 날짜로 갱신돼요.</p>
-      <label class="field full"><span>메이팅 날짜</span><input type="date" name="date" value="${todayISO()}" required></label>
+    <form id="matinglog-form" onsubmit="event.preventDefault(); saveMatingLog('${matingId}'${editing?`, '${esc(oldDate)}'`:''});">
+      <p style="font-size:13px;color:var(--ink-soft);">${editing?'메이팅 날짜를 고쳐요. 고치면 \'최근 메이팅일\'도 같이 바뀌어요.':'새 메이팅 날짜를 기록하면 \'최근 메이팅일\'이 이 날짜로 갱신돼요.'}</p>
+      <label class="field full"><span>메이팅 날짜</span><input type="date" name="date" value="${editing?esc(oldDate):todayISO()}" required></label>
       <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" onclick="closeModal()">취소</button>
-        <button type="submit" class="btn btn-primary">기록하기</button>
+        <button type="button" class="btn btn-ghost" onclick="${editing?`openMatingForm('${matingId}')`:'closeModal()'}">취소</button>
+        <button type="submit" class="btn btn-primary">${editing?'저장':'기록하기'}</button>
       </div>
     </form>`;
-  openModal('메이팅 기록 추가', body);
+  openModal(editing?'메이팅 기록 수정':'메이팅 기록 추가', body);
 }
-async function saveMatingLog(matingId){
+async function saveMatingLog(matingId, oldDate){
   const m = state.matings.find(x=>x.id===matingId);
   const date = new FormData(document.getElementById('matinglog-form')).get('date');
   if(!m.matingLog) m.matingLog = [];
+  if(oldDate){
+    /* 날짜 수정: 옛 날짜를 빼고 새 날짜를 넣는다(브리딩 단계는 건드리지 않음) */
+    m.matingLog = m.matingLog.filter(d=>d!==oldDate);
+    if(!m.matingLog.includes(date)) m.matingLog.push(date);
+    closeModal();
+    await persistAndRender();
+    openMatingForm(matingId);
+    return;
+  }
   if(!m.matingLog.includes(date)) m.matingLog.push(date);
   bumpBreedingLevel(state.individuals.find(i=>i.id===m.sireId), 1); // 수컷: 메이팅 -> 보류(유정란 나와야 예)
   bumpBreedingLevel(state.individuals.find(i=>i.id===m.damId), 1);  // 암컷: 메이팅 -> 보류
   closeModal();
   await persistAndRender();
+}
+async function deleteMatingLogEntry(matingId, date){
+  if(!confirm(date+' 메이팅 기록을 삭제할까요?')) return;
+  const m = state.matings.find(x=>x.id===matingId);
+  if(!m || !m.matingLog) return;
+  m.matingLog = m.matingLog.filter(d=>d!==date);
+  await persistAndRender();
+  openMatingForm(matingId);
+}
+function renderMatingLogListHtml(m){
+  const log = (m.matingLog||[]).slice().sort().reverse();
+  if(log.length===0) return `<div class="readonly-note">아직 기록된 메이팅 날짜가 없어요.</div>`;
+  return log.map(d=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 2px;border-top:1px dashed var(--border);">
+      <div style="font-family:var(--font-display);font-weight:700;font-size:13.5px;color:var(--pine-deep);">${esc(d)}</div>
+      <div style="display:flex;gap:4px;">
+        <button type="button" onclick="openMatingLogForm('${m.id}','${esc(d)}')" class="btn btn-ghost" style="padding:6px 10px;font-size:12px;">수정</button>
+        <button type="button" onclick="deleteMatingLogEntry('${m.id}','${esc(d)}')" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;">삭제</button>
+      </div>
+    </div>
+  `).join('');
 }
 
 /* ---------------- 메이팅 정보(메타) 폼 ---------------- */
@@ -3157,7 +3188,11 @@ function openMatingForm(id){
       ${isNew?`<div class="readonly-note" style="margin-top:-8px;">둘 중 최소 하나는 채워주세요. 실제 짝짓기를 봤으면 메이팅 날짜에, 그냥 같이 살게만 뒀으면 합사 시작일에 적어주세요. 둘 다 채워도 돼요.</div>`:''}
       <div class="readonly-note">상태를 '산란 종료'로 바꾸면 다음 산란예정일 계산이 멈춰요. 카드에서 상태 칩을 눌러도 바로 전환돼요.</div>
 
-      ${!isNew?`<button type="button" class="btn btn-ghost btn-block" style="margin-top:6px;" onclick="openMatingLogForm('${id}');">+ 메이팅 기록(재메이팅) 추가</button>`:''}
+      ${!isNew?`
+      <div class="form-divider">메이팅 기록 (짝짓기를 확인한 날짜)</div>
+      <button type="button" class="btn btn-ghost btn-block" style="margin-bottom:4px;" onclick="openMatingLogForm('${id}');">+ 메이팅 기록(재메이팅) 추가</button>
+      ${renderMatingLogListHtml(data)}
+      `:''}
 
       ${!isNew?`
       <div class="form-divider">합사 이력 (같이 지내게만 둔 기간)</div>
