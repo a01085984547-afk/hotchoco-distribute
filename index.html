@@ -1643,11 +1643,13 @@ function refreshIndividualFilterCounts(){
     if(!q) return true;
     return (i.name||'').toLowerCase().includes(q)||(i.id||'').toLowerCase().includes(q)||(i.morph||'').toLowerCase().includes(q);
   });
-  const morphCounts = {}, hetCounts = {}, genderCounts = {};
+  const morphCounts = {}, hetCounts = {}, genderCounts = {}, mainCounts = {}, stageCounts = {};
   searchOnly.forEach(i=>{
     if(i.morph) morphCounts[i.morph] = (morphCounts[i.morph]||0)+1;
     if(i.morphHet) hetCounts[i.morphHet] = (hetCounts[i.morphHet]||0)+1;
     if(i.gender) genderCounts[i.gender] = (genderCounts[i.gender]||0)+1;
+    const mk = i.main||'보류'; mainCounts[mk] = (mainCounts[mk]||0)+1;
+    const sk = growthStageOfIndividual(i); stageCounts[sk] = (stageCounts[sk]||0)+1;
   });
   const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
   const hetList = HET_OPTIONS.filter(h=>h!=='없음');
@@ -1665,6 +1667,14 @@ function refreshIndividualFilterCounts(){
     <option value="수컷" ${individualGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
     <option value="암컷" ${individualGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
     <option value="미구분" ${individualGenderFilter==='미구분'?'selected':''}>미구분 (${genderCounts['미구분']||0}마리)</option>`;
+
+  const mainSel = document.getElementById('individual-main-filter');
+  if(mainSel) mainSel.innerHTML = `<option value="">메인/서브 전체보기</option>` +
+    ['메인','서브','보류'].map(v=>`<option value="${v}" ${individualMainFilter===v?'selected':''}>${v} (${mainCounts[v]||0}마리)</option>`).join('');
+
+  const stageSel = document.getElementById('individual-stage-filter');
+  if(stageSel) stageSel.innerHTML = `<option value="">성장단계 전체보기</option>` +
+    ['베이비','아성체','준성체','성체','미상'].map(v=>`<option value="${v}" ${individualStageFilter===v?'selected':''}>${v} (${stageCounts[v]||0}마리)</option>`).join('');
 }
 
 function avatarHtml(entity, kind, size){
@@ -1742,10 +1752,13 @@ function renderIndividualList(){
     if(!q) return true;
     return (i.name||'').toLowerCase().includes(q)||(i.id||'').toLowerCase().includes(q)||(i.morph||'').toLowerCase().includes(q);
   });
+  const mainCounts = {}, stageCounts = {};
   searchOnly.forEach(i=>{
     if(i.morph) morphCounts[i.morph] = (morphCounts[i.morph]||0)+1;
     if(i.morphHet) hetCounts[i.morphHet] = (hetCounts[i.morphHet]||0)+1;
     if(i.gender) genderCounts[i.gender] = (genderCounts[i.gender]||0)+1;
+    const mk = i.main||'보류'; mainCounts[mk] = (mainCounts[mk]||0)+1;
+    const sk = growthStageOfIndividual(i); stageCounts[sk] = (stageCounts[sk]||0)+1;
   });
   const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
   const hetList = HET_OPTIONS.filter(h=>h!=='없음');
@@ -1786,19 +1799,13 @@ function renderIndividualList(){
       </select>
     </div>
     <div class="searchbar">
-      <select onchange="setIndividualMainFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-main-filter" onchange="setIndividualMainFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">메인/서브 전체보기</option>
-        <option value="메인" ${individualMainFilter==='메인'?'selected':''}>메인</option>
-        <option value="서브" ${individualMainFilter==='서브'?'selected':''}>서브</option>
-        <option value="보류" ${individualMainFilter==='보류'?'selected':''}>보류</option>
+        ${['메인','서브','보류'].map(v=>`<option value="${v}" ${individualMainFilter===v?'selected':''}>${v} (${mainCounts[v]||0}마리)</option>`).join('')}
       </select>
-      <select onchange="setIndividualStageFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-stage-filter" onchange="setIndividualStageFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">성장단계 전체보기</option>
-        <option value="베이비" ${individualStageFilter==='베이비'?'selected':''}>베이비</option>
-        <option value="아성체" ${individualStageFilter==='아성체'?'selected':''}>아성체</option>
-        <option value="준성체" ${individualStageFilter==='준성체'?'selected':''}>준성체</option>
-        <option value="성체" ${individualStageFilter==='성체'?'selected':''}>성체</option>
-        <option value="미상" ${individualStageFilter==='미상'?'selected':''}>미상</option>
+        ${['베이비','아성체','준성체','성체','미상'].map(v=>`<option value="${v}" ${individualStageFilter===v?'selected':''}>${v} (${stageCounts[v]||0}마리)</option>`).join('')}
       </select>
     </div>
     <div id="individual-list-body">${renderIndividualListBody(items)}</div>`;
