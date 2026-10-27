@@ -3076,9 +3076,9 @@ function renderMatingOffspringCharts(m){
     kids.forEach(h=>{ const k = labelFn(h); map[k] = (map[k]||0)+1; });
     return Object.keys(map).map(k=>({label:k,count:map[k]})).sort((a,b)=>b.count-a.count);
   };
-  const morphEntries = tally(h=>h.morph||'모프 미정');
-  const hetEntries = tally(h=>h.morphHet ? formatHetDisplay(h.morphHet) : '헷 없음');
-  const content = donutChartHtml('모프별', morphEntries) + donutChartHtml('헷 여부별', hetEntries);
+  /* 모프와 헷을 합쳐서 한 그래프로: "릴리화이트 100% Het 아잔틱"처럼 실제 판매·브리딩에 쓰는 이름 단위로 센다 */
+  const entries = tally(h=>formatMorphFull(h.morph||'모프 미정', h.morphHet).main);
+  const content = donutChartHtml('모프별 (헷 포함)', entries);
   return collapsibleSection('matingKids_'+m.id, `이 조합에서 나온 애들 (${kids.length}마리)`, content, true);
 }
 
