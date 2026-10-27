@@ -1650,7 +1650,7 @@ function refreshFilterToggle(kind){
 function toggleListFilters(kind){
   listFiltersOpen[kind] = !listFiltersOpen[kind];
   const panel = document.getElementById(kind+'-filter-panel');
-  if(panel) panel.style.display = listFiltersOpen[kind] ? 'block' : 'none';
+  if(panel) panel.style.display = listFiltersOpen[kind] ? 'grid' : 'none';
   refreshFilterToggle(kind);
 }
 let individualShowSold = false;
@@ -1841,40 +1841,34 @@ function renderIndividualList(){
       ${searchBoxHtml('이름·ID·모프로 검색', listFilters.individual, 'setIndividualFilter')}
     </div>
     <div class="searchbar">
-      <select onchange="setIndividualSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <button type="button" id="individual-filter-toggle" class="chip-toggle ${activeFilterCount('individual')?'chip-selected':''}" style="flex:1;padding:6px 10px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);" onclick="toggleListFilters('individual')">${filterToggleLabel('individual')}</button>
+    </div>
+    <div id="individual-filter-panel" style="display:${listFiltersOpen.individual?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+      <select onchange="setIndividualSort(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         ${sortOptions.map(o=>`<option value="${o.v}" ${o.v===individualSort?'selected':''}>${o.l}</option>`).join('')}
       </select>
-      <button type="button" id="individual-filter-toggle" class="chip-toggle ${activeFilterCount('individual')?'chip-selected':''}" style="flex:1;padding:0 10px;font-size:13px;font-weight:400;border-radius:var(--radius-sm);" onclick="toggleListFilters('individual')">${filterToggleLabel('individual')}</button>
-    </div>
-    <div id="individual-filter-panel" style="display:${listFiltersOpen.individual?'block':'none'};">
-    <div class="searchbar">
-      <select id="individual-morph-filter" onchange="setIndividualMorphFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-morph-filter" onchange="setIndividualMorphFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">모프 전체 보기</option>
         ${morphList.map(m=>`<option value="${esc(m)}" ${m===individualMorphFilter?'selected':''}>${esc(m)} (${morphCounts[m]}마리)</option>`).join('')}
       </select>
-      <select id="individual-het-filter" onchange="setIndividualHetFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-het-filter" onchange="setIndividualHetFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">헷 여부</option>
         ${hetList.map(h=>`<option value="${esc(h)}" ${h===individualHetFilter?'selected':''}>${esc(h)}${hetCounts[h]?' ('+hetCounts[h]+'마리)':''}</option>`).join('')}
       </select>
-    </div>
-    <div class="searchbar">
-      <select id="individual-gender-filter" onchange="setIndividualGenderFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-gender-filter" onchange="setIndividualGenderFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">성별 전체보기</option>
         <option value="수컷" ${individualGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
         <option value="암컷" ${individualGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
         <option value="미구분" ${individualGenderFilter==='미구분'?'selected':''}>미구분 (${genderCounts['미구분']||0}마리)</option>
       </select>
-      <select id="individual-main-filter" onchange="setIndividualMainFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-main-filter" onchange="setIndividualMainFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">메인/서브 전체보기</option>
         ${['메인','서브','보류'].map(v=>`<option value="${v}" ${individualMainFilter===v?'selected':''}>${v} (${mainCounts[v]||0}마리)</option>`).join('')}
       </select>
-    </div>
-    <div class="searchbar">
-      <select id="individual-stage-filter" onchange="setIndividualStageFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="individual-stage-filter" onchange="setIndividualStageFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">성장단계 전체보기</option>
         ${['베이비','아성체','준성체','성체','미상'].map(v=>`<option value="${v}" ${individualStageFilter===v?'selected':''}>${v} (${stageCounts[v]||0}마리)</option>`).join('')}
       </select>
-    </div>
     </div>
     <div id="individual-list-body">${renderIndividualListBody(items)}</div>`;
 }
@@ -2056,34 +2050,30 @@ function renderHatchlingList(){
     </div>
     <div class="searchbar">${searchBoxHtml('ID·모프·부모 이름으로 검색', listFilters.hatchling, 'setHatchlingFilter')}</div>
     <div class="searchbar">
-      <select onchange="setHatchlingSort(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <button type="button" id="hatchling-filter-toggle" class="chip-toggle ${activeFilterCount('hatchling')?'chip-selected':''}" style="flex:1;padding:6px 10px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);" onclick="toggleListFilters('hatchling')">${filterToggleLabel('hatchling')}</button>
+    </div>
+    <div id="hatchling-filter-panel" style="display:${listFiltersOpen.hatchling?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+      <select onchange="setHatchlingSort(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         ${sortOptions.map(o=>`<option value="${o.v}" ${o.v===hatchlingSort?'selected':''}>${o.l}</option>`).join('')}
       </select>
-      <button type="button" id="hatchling-filter-toggle" class="chip-toggle ${activeFilterCount('hatchling')?'chip-selected':''}" style="flex:1;padding:0 10px;font-size:13px;font-weight:400;border-radius:var(--radius-sm);" onclick="toggleListFilters('hatchling')">${filterToggleLabel('hatchling')}</button>
-    </div>
-    <div id="hatchling-filter-panel" style="display:${listFiltersOpen.hatchling?'block':'none'};">
-    <div class="searchbar">
-      <select id="hatchling-morph-filter" onchange="setHatchlingMorphFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-morph-filter" onchange="setHatchlingMorphFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">모프 전체 보기</option>
         ${morphList.map(m=>`<option value="${esc(m)}" ${m===hatchlingMorphFilter?'selected':''}>${esc(m)} (${morphCounts[m]}마리)</option>`).join('')}
       </select>
-      <select id="hatchling-het-filter" onchange="setHatchlingHetFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-het-filter" onchange="setHatchlingHetFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">헷 여부</option>
         ${hetList.map(h=>`<option value="${esc(h)}" ${h===hatchlingHetFilter?'selected':''}>${esc(h)}${hetCounts[h]?' ('+hetCounts[h]+'마리)':''}</option>`).join('')}
       </select>
-    </div>
-    <div class="searchbar">
-      <select id="hatchling-gender-filter" onchange="setHatchlingGenderFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-gender-filter" onchange="setHatchlingGenderFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">성별 전체보기</option>
         <option value="수컷" ${hatchlingGenderFilter==='수컷'?'selected':''}>수컷 (${genderCounts['수컷']||0}마리)</option>
         <option value="암컷" ${hatchlingGenderFilter==='암컷'?'selected':''}>암컷 (${genderCounts['암컷']||0}마리)</option>
         <option value="미구분" ${hatchlingGenderFilter==='미구분'?'selected':''}>미구분 (${genderCounts['미구분']||0}마리)</option>
       </select>
-      <select id="hatchling-status-filter" onchange="setHatchlingStatusFilter(this.value)" style="flex:1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
+      <select id="hatchling-status-filter" onchange="setHatchlingStatusFilter(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
         <option value="">상태 전체 보기</option>
         ${statusList.map(s=>`<option value="${esc(s)}" ${s===hatchlingStatusFilter?'selected':''}>${esc(s)}${statusCounts[s]?' ('+statusCounts[s]+'마리)':''}</option>`).join('')}
       </select>
-    </div>
     </div>
     <div id="hatchling-list-body">${renderHatchlingListBody(items)}</div>`;
 }
