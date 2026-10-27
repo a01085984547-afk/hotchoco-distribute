@@ -623,11 +623,10 @@ function toggleSaleSection(prefix){
   section.style.display = statusSel.value==='분양 완료' ? 'block' : 'none';
 }
 
+/* 예전에는 '분양 예정'을 '분양 중'으로 이름만 바꿨는데, 이제 '분양 예정'이 별도 상태로 다시 생겼으므로
+   더 이상 값을 바꾸지 않는다(이미 '분양 중'으로 바뀐 기존 데이터는 그대로 둔다). */
 function migrateSaleStatusLabel(st){
-  let changed = false;
-  (st.individuals||[]).forEach(i=>{ if(i.status==='분양 예정'){ i.status='분양 중'; changed=true; } });
-  (st.hatchlings||[]).forEach(h=>{ if(h.status==='분양 예정'){ h.status='분양 중'; changed=true; } });
-  return changed;
+  return false;
 }
 function migrateOriginTypeLabel(st){
   let changed = false;
@@ -1895,7 +1894,7 @@ function refreshHatchlingFilterCounts(){
   });
   const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
   const hetList = HET_OPTIONS.filter(h=>h!=='없음');
-  const statusList = ['보유','등록 개체','분양 중','분양 완료','사망','기타'];
+  const statusList = ['보유','분양 예정','등록 개체','분양 중','분양 완료','사망','기타'];
 
   const morphSel = document.getElementById('hatchling-morph-filter');
   if(morphSel) morphSel.innerHTML = `<option value="">모프 전체 보기</option>` +
@@ -1987,7 +1986,7 @@ function renderHatchlingList(){
   });
   const morphList = Object.keys(morphCounts).sort((a,b)=>morphCounts[b]-morphCounts[a]);
   const hetList = HET_OPTIONS.filter(h=>h!=='없음');
-  const statusList = ['보유','등록 개체','분양 중','분양 완료','사망','기타'];
+  const statusList = ['보유','분양 예정','등록 개체','분양 중','분양 완료','사망','기타'];
   const sortOptions = [
     {v:'age_desc',l:'개월순(최신 해칭)'},
     {v:'age_asc',l:'개월순(오래된 해칭)'},
@@ -2799,7 +2798,7 @@ function openIndividualForm(id){
         <label class="field"><span>브리딩 여부</span><select name="breeding">${selOpts(['예','아니오','보류'],data.breeding)}</select></label>
         <label class="field"><span>프루븐 여부</span><select name="provenStatus">${selOpts(['예','아니오'],data.provenStatus||'아니오')}</select></label>
         <label class="field"><span>메인/서브 여부</span><select name="main">${selOpts(['메인','서브','보류'],data.main)}</select></label>
-        <label class="field"><span>현재 상태</span><select name="status" id="ownStatusField" onchange="toggleSaleSection('own')">${selOpts(['보유','분양 중','분양 완료','사망','기타'],data.status)}</select></label>
+        <label class="field"><span>현재 상태</span><select name="status" id="ownStatusField" onchange="toggleSaleSection('own')">${selOpts(['보유','분양 예정','분양 중','분양 완료','사망','기타'],data.status)}</select></label>
         <label class="field"><span>분양가</span><input type="text" inputmode="numeric" name="salePrice" value="${formatNumberWithCommas(data.salePrice)}" oninput="onPriceInputFormat(this)" placeholder="0"></label>
       </div>
       <div id="ownSaleSection" style="display:${data.status==='분양 완료'?'block':'none'};">
@@ -4156,7 +4155,7 @@ function openHatchlingForm(id, prefill){
         <label class="field"><span>킵 여부</span><select name="keep">${selOpts(['예','아니오','보류'],data.keep)}</select></label>
         <label class="field"><span>브리딩 여부</span><select name="breeding">${selOpts(['예','아니오','보류'],data.breeding)}</select></label>
         <label class="field"><span>메인/서브 여부</span><select name="main">${selOpts(['메인','서브','보류'],data.main)}</select></label>
-        <label class="field"><span>현재 상태</span><select name="status" id="hatchStatusField" onchange="toggleSaleSection('hatch')">${selOpts(['보유','분양 중','분양 완료','사망','기타'],data.status)}</select></label>
+        <label class="field"><span>현재 상태</span><select name="status" id="hatchStatusField" onchange="toggleSaleSection('hatch')">${selOpts(['보유','분양 예정','분양 중','분양 완료','사망','기타'],data.status)}</select></label>
       </div>
       <div id="hatchSaleSection" style="display:${data.status==='분양 완료'?'block':'none'};">
         <div class="form-divider">분양 정보</div>
