@@ -472,9 +472,9 @@ function transformSeed(raw){
 /* ---------------- 레거시 모프 코드(Ax, LwHAx 등) → 새 모프/헷 체계 자동 변환 ---------------- */
 const LEGACY_MORPH_MAP = {
   'Ax':      {morph:'아잔틱', het:''},
-  'LwHAx':   {morph:'릴리화이트', het:'헷아잔틱'},
+  'LwHAx':   {morph:'릴리화이트', het:'100헷아잔틱'},
   'LwAx':    {morph:'릴잔틱', het:''},
-  'NHAx':    {morph:'노멀', het:'헷아잔틱'},
+  'NHAx':    {morph:'노멀', het:'100헷아잔틱'},
   'Normal':  {morph:'노멀', het:''}
 };
 function migrateLegacyMorphs(st){
@@ -767,7 +767,8 @@ async function loadState(){
   const migratedSoloInfertileLog = migrateSoloInfertileLogArray(state);
   const migratedSoloLayLogRename = migrateSoloLayLogRename(state);
   const migratedEggCondition = migrateEggConditionLabel(state);
-  if(fromSeed || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset || migratedSoloInfertileLog || migratedSoloLayLogRename || migratedEggCondition){ await saveState(); }
+  const migratedHetPercent = migrateHetPercent(state);
+  if(fromSeed || migratedHetPercent || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset || migratedSoloInfertileLog || migratedSoloLayLogRename || migratedEggCondition){ await saveState(); }
 }
 async function saveState(){
   await storageSet(STORAGE_KEY, JSON.stringify(state));
@@ -880,7 +881,7 @@ async function toggleMatingStatus(matingId){
 const BASE_MORPHS = ['노멀','루왁','루왁 릴리','릴리 세이블','릴리화이트','릴잔틱','세이블','슈퍼세이블 릴리','슈퍼 세이블','슈퍼하이포','아잔틱','초초','카푸치노','파이드','프라푸치노','하이포'];
 const PATTERN_TRAITS = ['바이','트라이','패턴리스','팬텀','달마시안','드리피','벅스킨','브린들','솔리드백','슈퍼달마시안','슈퍼스트라이프','엠티백','익스트림할리퀸','플레임','쿼드','풀핀','핀스트라이프','할리퀸','화이트스팟','화이트크라운','화이트포트홀','화이트핀'];
 const COLOR_TRAITS = ['다크','레드','블랙','스트로베리','옐로우','차콜','크림','크림시클','타이거','텐저린','할로윈','화이트'];
-const HET_OPTIONS = ['없음','헷아잔틱','헷초초'];
+const HET_OPTIONS = ['없음','100헷아잔틱','66헷아잔틱','50헷아잔틱','100헷초초','66헷초초','50헷초초'];
 /* 유/무정 상태 관련 - '중지'(발생하다 죽음)는 실제로는 유정이었다는 증거라 브리딩/프루븐 판정에는 유정과
    똑같이 치지만, 더 이상 부화를 기다릴 대상은 아니라서 '대기 중' 계산에서는 뺀다. */
 function wasEverFertile(status){
@@ -1040,11 +1041,27 @@ function readHetValue(fieldPrefix){
   }
   return sel.value;
 }
-/* 표시용: "헷아잔틱" → "Het 아잔틱" */
+/* 표시용: "66헷아잔틱" → "66% Het 아잔틱". 퍼센트 없는 옛 값("헷아잔틱")은 100헷으로 본다. */
 function formatHetDisplay(hetValue){
   if(!hetValue) return '';
-  const trait = hetValue.startsWith('헷') ? hetValue.slice(1) : hetValue;
-  return `Het ${trait}`;
+  const m = /^(\d+)?헷\s*(.*)$/.exec(hetValue);
+  if(m) return `${m[1]||'100'}% Het ${m[2]}`;
+  return `Het ${hetValue}`;
+}
+/* 퍼센트 없는 옛 헷 값("헷아잔틱")을 100헷으로 바꿔 저장해 둔다 */
+function normalizeHetValue(v){
+  return (typeof v==='string' && /^헷/.test(v)) ? '100'+v : v;
+}
+function migrateHetPercent(st){
+  let changed = false;
+  const fix = (obj, field)=>{
+    const nv = normalizeHetValue(obj[field]);
+    if(nv!==obj[field]){ obj[field]=nv; changed=true; }
+  };
+  (st.individuals||[]).forEach(i=>{ fix(i,'morphHet'); fix(i,'sireHet'); fix(i,'damHet'); });
+  (st.hatchlings||[]).forEach(h=>{ fix(h,'morphHet'); });
+  (st.externalLineageRefs||[]).forEach(r=>{ fix(r,'morphHet'); });
+  return changed;
 }
 function formatMorphFull(morph, het, patterns, colors){
   const parts = [];
@@ -3020,6 +3037,51 @@ function renderCohabitLogListHtml(m){
   `).join('');
 }
 
+/* ---------------- 이 조합에서 나온 애들: 모프별 / 헷 여부별 원형 그래프 ---------------- */
+const OFFSPRING_CHART_COLORS = ['#3E7C55','#B97A3D','#4A2E1B','#C98A32','#6E8FA6','#B8412F','#9C7BB0','#8A7A3E','#A6947F'];
+function donutChartHtml(title, entries){
+  const total = entries.reduce((a,e)=>a+e.count,0);
+  if(total===0) return '';
+  const R = 40, C = 2*Math.PI*R;
+  let offset = 0;
+  const slices = entries.map((e,idx)=>{
+    const len = C * e.count / total;
+    const color = OFFSPRING_CHART_COLORS[idx % OFFSPRING_CHART_COLORS.length];
+    const s = `<circle cx="55" cy="55" r="${R}" fill="none" stroke="${color}" stroke-width="22" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-offset}" transform="rotate(-90 55 55)"></circle>`;
+    offset += len;
+    return s;
+  }).join('');
+  const legend = entries.map((e,idx)=>{
+    const color = OFFSPRING_CHART_COLORS[idx % OFFSPRING_CHART_COLORS.length];
+    return `<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;padding:2px 0;">
+      <span style="width:10px;height:10px;border-radius:50%;background:${color};flex:none;"></span>
+      <span style="flex:1;">${esc(e.label)}</span>
+      <b>${e.count}마리</b><span style="color:var(--ink-faint);width:38px;text-align:right;">${Math.round(e.count/total*100)}%</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin-bottom:12px;">
+    <div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;">${esc(title)}</div>
+    <div style="display:flex;gap:14px;align-items:center;">
+      <svg viewBox="0 0 110 110" width="110" height="110" style="flex:none;">${slices}<text x="55" y="59" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ink)">${total}</text></svg>
+      <div style="flex:1;">${legend}</div>
+    </div>
+  </div>`;
+}
+function renderMatingOffspringCharts(m){
+  const clutchIds = new Set(clutchesOfMating(m.id).map(c=>c.id));
+  const kids = state.hatchlings.filter(h=>clutchIds.has(h.clutchId));
+  if(kids.length===0) return '';
+  const tally = (labelFn)=>{
+    const map = {};
+    kids.forEach(h=>{ const k = labelFn(h); map[k] = (map[k]||0)+1; });
+    return Object.keys(map).map(k=>({label:k,count:map[k]})).sort((a,b)=>b.count-a.count);
+  };
+  const morphEntries = tally(h=>h.morph||'모프 미정');
+  const hetEntries = tally(h=>h.morphHet ? formatHetDisplay(h.morphHet) : '헷 없음');
+  const content = donutChartHtml('모프별', morphEntries) + donutChartHtml('헷 여부별', hetEntries);
+  return collapsibleSection('matingKids_'+m.id, `이 조합에서 나온 애들 (${kids.length}마리)`, content, true);
+}
+
 function renderMatingCard(m){
   const dam = state.individuals.find(i=>i.id===m.damId);
   const sire = state.individuals.find(i=>i.id===m.sireId);
@@ -3085,6 +3147,7 @@ function renderMatingCard(m){
     const logDates = (m.matingLog||[]).slice().sort();
     detail = `<div class="mating-detail">
       ${rows}
+      ${renderMatingOffspringCharts(m)}
       <div class="mating-actions">
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); openClutchForm(null, '${m.id}')">+ 알 기록 추가</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); openMatingForm('${m.id}')">메이팅 정보 수정</button>
@@ -4351,6 +4414,7 @@ function initSync(){
           lastSyncedSnapshot[doc.id] = JSON.stringify(d.data);
         });
         state = newState;
+        if(migrateHetPercent(state)){ await pushChangedEntitiesToCloud(); }
         const cloudRefIds = new Set(state.externalLineageRefs.map(r=>r.id));
         const unsyncedLocalRefs = localOnlyRefs.filter(r=>!cloudRefIds.has(r.id));
         if(unsyncedLocalRefs.length){
