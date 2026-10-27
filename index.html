@@ -3053,18 +3053,23 @@ function donutChartHtml(title, entries){
   }).join('');
   const legend = entries.map((e,idx)=>{
     const color = OFFSPRING_CHART_COLORS[idx % OFFSPRING_CHART_COLORS.length];
-    return `<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;padding:2px 0;">
-      <span style="width:10px;height:10px;border-radius:50%;background:${color};flex:none;"></span>
-      <span style="flex:1;">${esc(e.label)}</span>
-      <b>${e.count}마리</b><span style="color:var(--ink-faint);width:38px;text-align:right;">${Math.round(e.count/total*100)}%</span>
+    const pct = Math.round(e.count/total*100);
+    return `<div style="padding:7px 0;border-top:1px dashed var(--border);">
+      <div style="display:flex;align-items:baseline;gap:8px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${color};flex:none;align-self:center;"></span>
+        <span style="flex:1;font-size:13px;font-weight:600;line-height:1.35;word-break:keep-all;">${esc(e.label)}</span>
+        <span style="font-size:13px;font-weight:700;white-space:nowrap;">${e.count}마리</span>
+        <span style="font-size:12px;color:var(--ink-faint);width:34px;text-align:right;white-space:nowrap;">${pct}%</span>
+      </div>
+      <div style="height:4px;border-radius:2px;background:var(--border);margin:5px 0 0 18px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${color};"></div></div>
     </div>`;
   }).join('');
   return `<div style="margin-bottom:12px;">
-    <div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;">${esc(title)}</div>
-    <div style="display:flex;gap:14px;align-items:center;">
-      <svg viewBox="0 0 110 110" width="110" height="110" style="flex:none;">${slices}<text x="55" y="59" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ink)">${total}</text></svg>
-      <div style="flex:1;">${legend}</div>
+    <div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;">${esc(title)}</div>
+    <div style="display:flex;justify-content:center;margin-bottom:8px;">
+      <svg viewBox="0 0 110 110" width="128" height="128">${slices}<text x="55" y="53" text-anchor="middle" font-size="17" font-weight="700" fill="var(--ink)">${total}</text><text x="55" y="68" text-anchor="middle" font-size="8.5" fill="var(--ink-faint)">마리</text></svg>
     </div>
+    <div>${legend}</div>
   </div>`;
 }
 function renderMatingOffspringCharts(m){
