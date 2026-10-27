@@ -474,8 +474,8 @@ const LEGACY_MORPH_MAP = {
   'Ax':      {morph:'아잔틱', het:''},
   'LwHAx':   {morph:'릴리화이트', het:'100헷아잔틱'},
   'LwAx':    {morph:'릴잔틱', het:''},
-  'NHAx':    {morph:'노멀', het:'100헷아잔틱'},
-  'Normal':  {morph:'노멀', het:''}
+  'NHAx':    {morph:'노말', het:'100헷아잔틱'},
+  'Normal':  {morph:'노말', het:''}
 };
 function migrateLegacyMorphs(st){
   let changed = false;
@@ -777,7 +777,8 @@ async function loadState(){
   const migratedEggCondition = migrateEggConditionLabel(state);
   const migratedHetPercent = migrateHetPercent(state);
   const migratedKeepStatus = migrateKeepStatusLabel(state);
-  if(fromSeed || migratedHetPercent || migratedKeepStatus || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset || migratedSoloInfertileLog || migratedSoloLayLogRename || migratedEggCondition){ await saveState(); }
+  const migratedMorphNames = migrateMorphNames(state);
+  if(fromSeed || migratedHetPercent || migratedKeepStatus || migratedMorphNames || migratedMorphs || migratedIds || migratedSaleLabel || migratedOriginType || migratedMain || migratedMainNo || migratedBreeding || migratedBreedingReset || migratedSoloInfertileLog || migratedSoloLayLogRename || migratedEggCondition){ await saveState(); }
 }
 async function saveState(){
   await storageSet(STORAGE_KEY, JSON.stringify(state));
@@ -887,7 +888,7 @@ async function toggleMatingStatus(matingId){
 }
 
 /* ---------------- 모프 목록 (사용자 제공 마켓 필터 기준) ---------------- */
-const BASE_MORPHS = ['노멀','루왁','루왁 릴리','릴리 세이블','릴리화이트','릴잔틱','세이블','슈퍼세이블 릴리','슈퍼 세이블','슈퍼하이포','아잔틱','초초','카푸치노','파이드','프라푸치노','하이포'];
+const BASE_MORPHS = ['노말','루왁','루왁 릴리','릴리 세이블','릴리화이트','릴잔틱','세이블','슈퍼세이블 릴리','슈퍼 세이블','슈퍼하이포','아잔틱','초초','카푸치노','파이드','프라푸치노','하이포'];
 const PATTERN_TRAITS = ['바이','트라이','패턴리스','팬텀','달마시안','드리피','벅스킨','브린들','솔리드백','슈퍼달마시안','슈퍼스트라이프','엠티백','익스트림할리퀸','플레임','쿼드','풀핀','핀스트라이프','할리퀸','화이트스팟','화이트크라운','화이트포트홀','화이트핀'];
 const COLOR_TRAITS = ['다크','레드','블랙','스트로베리','옐로우','차콜','크림','크림시클','타이거','텐저린','할로윈','화이트'];
 const HET_OPTIONS = ['없음','100헷아잔틱','66헷아잔틱','50헷아잔틱','100헷초초','66헷초초','50헷초초'];
@@ -1050,16 +1051,30 @@ function readHetValue(fieldPrefix){
   }
   return sel.value;
 }
-/* 표시용: "66헷아잔틱" → "66% Het 아잔틱". 퍼센트 없는 옛 값("헷아잔틱")은 100헷으로 본다. */
+/* 표시용: "66헷아잔틱" → "66Het아잔틱". 퍼센트 없는 옛 값("헷아잔틱")은 100헷으로 본다. */
 function formatHetDisplay(hetValue){
   if(!hetValue) return '';
   const m = /^(\d+)?헷\s*(.*)$/.exec(hetValue);
-  if(m) return `${m[1]||'100'}% Het ${m[2]}`;
+  if(m) return `${m[1]||'100'}Het${m[2]}`;
   return `Het ${hetValue}`;
 }
 /* 퍼센트 없는 옛 헷 값("헷아잔틱")을 100헷으로 바꿔 저장해 둔다 */
 function normalizeHetValue(v){
   return (typeof v==='string' && /^헷/.test(v)) ? '100'+v : v;
+}
+/* 모프 이름 정리: 노멀→노말 (기존에 저장된 값도 새 이름으로 맞춘다).
+   '릴리화이트'는 단일 모프라 이름을 그대로 쓴다 - 잠깐 '릴리'로 바뀐 적이 있어서 그 값만 되돌린다. */
+const MORPH_NAME_RENAMES = { '노멀':'노말', '릴리':'릴리화이트' };
+function migrateMorphNames(st){
+  let changed = false;
+  const fix = (obj, field)=>{
+    const nv = MORPH_NAME_RENAMES[obj[field]];
+    if(nv){ obj[field]=nv; changed=true; }
+  };
+  (st.individuals||[]).forEach(i=>{ fix(i,'morph'); fix(i,'sireMorph'); fix(i,'damMorph'); });
+  (st.hatchlings||[]).forEach(h=>{ fix(h,'morph'); });
+  (st.externalLineageRefs||[]).forEach(r=>{ fix(r,'morph'); });
+  return changed;
 }
 function migrateHetPercent(st){
   let changed = false;
@@ -1072,12 +1087,19 @@ function migrateHetPercent(st){
   (st.externalLineageRefs||[]).forEach(r=>{ fix(r,'morphHet'); });
   return changed;
 }
+/* 헷이 같이 붙을 때만 줄여 부르는 모프 이름(저장값은 그대로): 릴리화이트 + 100헷아잔틱 → "릴리100Het아잔틱" */
+const MORPH_SHORT_WITH_HET = { '릴리화이트':'릴리' };
+function morphNameForLabel(morph, het){
+  return (het && MORPH_SHORT_WITH_HET[morph]) ? MORPH_SHORT_WITH_HET[morph] : (morph||'');
+}
 function formatMorphFull(morph, het, patterns, colors){
   const parts = [];
-  if(morph) parts.push(morph);
-  if(het) parts.push(formatHetDisplay(het));
+  /* 통상 표기: "릴리100Het아잔틱" - 모프, 퍼센트, Het, 헷 종류를 모두 붙여 쓴다(직접 입력한 헷 값은 띄어서) */
+  const hetText = het ? formatHetDisplay(het) : '';
+  const joiner = /^\d+Het/.test(hetText) ? '' : ' ';
+  const main = [morphNameForLabel(morph, het), hetText].filter(Boolean).join(morph && hetText ? joiner : '');
   const tags = [...(patterns||[]), ...(colors||[])];
-  return { main: parts.join(' '), tags };
+  return { main, tags };
 }
 function formatMorphDisplayFull(morph, het, patterns, colors){
   const { main, tags } = formatMorphFull(morph, het, patterns, colors);
@@ -1784,12 +1806,11 @@ function renderIndividualListBody(items){
     <div class="card-top">
       <div style="display:flex;gap:10px;align-items:flex-start;">
         ${avatarHtml(i, 'individual')}
-        <div><div class="card-title">${esc(i.name)||'(이름없음)'}</div><div class="card-id">${esc(i.id)}</div></div>
+        <div><div class="card-title">${esc(i.name)||'(이름없음)'}${i.morph?(' <span style="font-size:12px;color:var(--ink-faint);font-weight:600;">'+esc(formatMorphFull(i.morph,i.morphHet).main)+'</span>'):''}</div><div class="card-id">${esc(i.id)}</div></div>
       </div>
       <div class="chip ${genderChipClass(i.gender)}">${esc(i.gender)}</div>
     </div>
     <div class="card-meta">
-      ${i.morph?`<span class="chip muted">${esc(formatMorphFull(i.morph,i.morphHet).main)}</span>`:''}
       ${(i.status && i.status!=='보유')?`<span class="chip muted">${esc(i.status)}</span>`:''}
       ${i.main==='메인'?`<span class="chip alt">메인</span>`:''}
       ${i.main==='서브'?`<span class="chip muted">서브</span>`:''}
@@ -1991,7 +2012,7 @@ function renderHatchlingListBody(items){
     <div class="card-top">
       <div style="display:flex;gap:10px;align-items:flex-start;">
         ${avatarHtml(h, 'hatchling')}
-        <div><div class="card-title">${esc(h.morph)||'모프 미정'}${h.morphHet?(' <span style="font-size:12px;color:var(--ink-faint);font-weight:600;">'+esc(formatHetDisplay(h.morphHet))+'</span>'):''}</div><div class="card-id">${esc(h.id)} (알 ${esc(h.eggLabel)})</div></div>
+        <div><div class="card-title">${esc(morphNameForLabel(h.morph,h.morphHet))||'모프 미정'}${h.morphHet?('<span style="font-size:12px;color:var(--ink-faint);font-weight:600;">'+esc(formatHetDisplay(h.morphHet))+'</span>'):''}</div><div class="card-id">${esc(h.id)} (알 ${esc(h.eggLabel)})</div></div>
       </div>
       <div class="chip ${h.status==='축양 개체'&&!h.promotedToId?'':'muted'}">${esc(hatchlingDisplayStatus(h))}</div>
     </div>
@@ -2720,12 +2741,12 @@ function openIndividualDetail(id){
       <div class="dcell">
         <div class="lbl">부</div>
         <div class="val">${esc(ind.sireName)||'-'}${ind.sireCompany?` (${esc(ind.sireCompany)})`:''}</div>
-        ${(ind.sireMorph||ind.sireHet)?`<div class="sub">${esc(ind.sireMorph)||'-'}${ind.sireHet?' '+esc(formatHetDisplay(ind.sireHet)):''}</div>`:''}
+        ${(ind.sireMorph||ind.sireHet)?`<div class="sub">${esc(formatMorphFull(ind.sireMorph, ind.sireHet).main)||'-'}</div>`:''}
       </div>
       <div class="dcell">
         <div class="lbl">모</div>
         <div class="val">${esc(ind.damName)||'-'}${ind.damCompany?` (${esc(ind.damCompany)})`:''}</div>
-        ${(ind.damMorph||ind.damHet)?`<div class="sub">${esc(ind.damMorph)||'-'}${ind.damHet?' '+esc(formatHetDisplay(ind.damHet)):''}</div>`:''}
+        ${(ind.damMorph||ind.damHet)?`<div class="sub">${esc(formatMorphFull(ind.damMorph, ind.damHet).main)||'-'}</div>`:''}
       </div>
     </div>
   ` : `<div class="readonly-note">등록된 부모 정보가 없어요.</div>`;
@@ -4460,7 +4481,7 @@ function initSync(){
           lastSyncedSnapshot[doc.id] = JSON.stringify(d.data);
         });
         state = newState;
-        const cloudMigrated = [migrateHetPercent(state), migrateKeepStatusLabel(state)].some(Boolean);
+        const cloudMigrated = [migrateHetPercent(state), migrateKeepStatusLabel(state), migrateMorphNames(state)].some(Boolean);
         if(cloudMigrated){ await pushChangedEntitiesToCloud(); }
         const cloudRefIds = new Set(state.externalLineageRefs.map(r=>r.id));
         const unsyncedLocalRefs = localOnlyRefs.filter(r=>!cloudRefIds.has(r.id));
@@ -4706,6 +4727,7 @@ async function handleImportBackup(inputEl){
     /* 옛 백업에는 예전 이름('보유', 퍼센트 없는 헷)이 들어 있을 수 있어서 새 체계로 맞춘다 */
     migrateHetPercent(state);
     migrateKeepStatusLabel(state);
+    migrateMorphNames(state);
     inputEl.value = '';
     await persistAndRender();
     alert('복원이 완료됐어요!');
