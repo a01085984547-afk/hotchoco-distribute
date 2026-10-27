@@ -1997,11 +1997,9 @@ function renderHatchlingListBody(items){
     </div>
     <div class="card-meta">
       <span class="chip ${genderChipClass(h.gender)}">${esc(h.gender)}</span>
-      ${(h.morphPatterns||[]).map(p=>`<span class="chip muted">${esc(p)}</span>`).join('')}
-      ${(h.morphColors||[]).map(c=>`<span class="chip muted">${esc(c)}</span>`).join('')}
-      ${h.dotStatus==='있음'?`<span class="chip muted">점</span>`:''}
-      ${(()=>{const w=latestWeightEntry(h);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
       <span class="chip ${growthStageChipClass(growthStageOfHatchling(h))}">${esc(growthStageOfHatchling(h))}</span>
+      ${(()=>{const w=latestWeightEntry(h);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
+      ${h.dotStatus==='있음'?`<span class="chip muted">점</span>`:''}
       ${h.price?`<span class="chip muted">${fmtMoney(h.price)}</span>`:''}
     </div>
     <div class="card-sub">부모 ${esc(h.damName)} × ${esc(h.sireName)} · 해칭일 ${esc(h.hatchDate)||'-'}${h.hatchDate?` (${ageLabel(h.hatchDate)})`:''}${(()=>{const c=state.clutches.find(c=>c.id===h.clutchId);return c&&c.clutchNum?' · '+esc(c.clutchNum)+'차':'';})()}</div>
