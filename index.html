@@ -71,11 +71,11 @@ main{padding:16px 16px 100px;}
 .chip.alt{background:var(--amber-soft);color:var(--amber);}
 .chip.muted{background:#EEEBDF;color:var(--ink-soft);}
 .chip.danger{background:var(--danger-soft);color:var(--danger);}
-.chip.stage-baby{background:#FFF3D6;color:#8A6D1F;}
-.chip.stage-juvenile{background:#E4EFE4;color:#3E7C55;}
-.chip.stage-subadult{background:#F3E3C8;color:#B97A3D;}
-.chip.stage-adult{background:#E7DEF5;color:#5B3E8A;}
-.chip.stage-unknown{background:#EEEBDF;color:var(--ink-soft);}
+.chip.stage-baby,.chip.stage-juvenile,.chip.stage-subadult,.chip.stage-adult,.chip.stage-unknown{background:#EEEBDF;color:var(--ink-soft);}
+/* 성별 색: 행사장 관례대로 수컷=파랑, 암컷=핑크, 미구분=초록 */
+.chip.gender-m{background:#DCE8F5;color:#2F5C8A;}
+.chip.gender-f{background:#F8E1E7;color:#B04A6A;}
+.chip.gender-u{background:#E1F0E4;color:#2F7D4F;}
 .card-sub{font-size:12.5px;color:var(--ink-soft);margin-top:8px;line-height:1.5;}
 .compact-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .compact-row{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);min-width:0;}
@@ -1786,20 +1786,16 @@ function renderIndividualListBody(items){
         ${avatarHtml(i, 'individual')}
         <div><div class="card-title">${esc(i.name)||'(이름없음)'}</div><div class="card-id">${esc(i.id)}</div></div>
       </div>
-      <div class="chip ${i.gender==='수컷'?'alt':(i.gender==='암컷'?'':'muted')}">${esc(i.gender)}</div>
+      <div class="chip ${genderChipClass(i.gender)}">${esc(i.gender)}</div>
     </div>
     <div class="card-meta">
       ${i.morph?`<span class="chip muted">${esc(formatMorphFull(i.morph,i.morphHet).main)}</span>`:''}
-      ${(i.morphPatterns||[]).map(p=>`<span class="chip muted">${esc(p)}</span>`).join('')}
-      ${(i.morphColors||[]).map(c=>`<span class="chip muted">${esc(c)}</span>`).join('')}
-      ${i.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
-      ${(()=>{const w=latestWeightEntry(i);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
-      <span class="chip ${growthStageChipClass(growthStageOfIndividual(i))}">${esc(growthStageOfIndividual(i))}</span>
       ${(i.status && i.status!=='보유')?`<span class="chip muted">${esc(i.status)}</span>`:''}
-      ${i.breeding==='예'?`<span class="chip">브리딩</span>`:''}
-      ${i.provenStatus==='예'?`<span class="chip">프루븐</span>`:''}
       ${i.main==='메인'?`<span class="chip alt">메인</span>`:''}
       ${i.main==='서브'?`<span class="chip muted">서브</span>`:''}
+      <span class="chip ${growthStageChipClass(growthStageOfIndividual(i))}">${esc(growthStageOfIndividual(i))}</span>
+      ${(()=>{const w=latestWeightEntry(i);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
+      ${i.dotStatus==='있음'?`<span class="chip muted">점</span>`:''}
     </div>
     <div class="card-sub">해칭일 ${esc(i.hatchDate)||'미상'}${i.hatchDate?` (${ageLabel(i.hatchDate)})`:''} · 출신 ${esc(i.originType)||'-'} ${i.originCompany?('('+esc(i.originCompany)+')'):''}</div>
   </div>`).join('');
@@ -2000,10 +1996,10 @@ function renderHatchlingListBody(items){
       <div class="chip ${h.status==='축양 개체'&&!h.promotedToId?'':'muted'}">${esc(hatchlingDisplayStatus(h))}</div>
     </div>
     <div class="card-meta">
-      <span class="chip muted">${esc(h.gender)}</span>
+      <span class="chip ${genderChipClass(h.gender)}">${esc(h.gender)}</span>
       ${(h.morphPatterns||[]).map(p=>`<span class="chip muted">${esc(p)}</span>`).join('')}
       ${(h.morphColors||[]).map(c=>`<span class="chip muted">${esc(c)}</span>`).join('')}
-      ${h.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
+      ${h.dotStatus==='있음'?`<span class="chip muted">점</span>`:''}
       ${(()=>{const w=latestWeightEntry(h);return w?`<span class="chip muted">${w.grams}g</span>`:'';})()}
       <span class="chip ${growthStageChipClass(growthStageOfHatchling(h))}">${esc(growthStageOfHatchling(h))}</span>
       ${h.price?`<span class="chip muted">${fmtMoney(h.price)}</span>`:''}
@@ -2482,6 +2478,9 @@ function growthStageOfHatchling(h){
   const w = latestWeightEntry(h);
   return (w ? growthStageFromWeight(w.grams) : null) || '베이비';
 }
+function genderChipClass(g){
+  return g==='수컷' ? 'gender-m' : (g==='암컷' ? 'gender-f' : 'gender-u');
+}
 function growthStageChipClass(stage){
   return { '베이비':'stage-baby', '아성체':'stage-juvenile', '준성체':'stage-subadult', '성체':'stage-adult', '미상':'stage-unknown' }[stage] || 'stage-unknown';
 }
@@ -2700,11 +2699,11 @@ function openIndividualDetail(id){
       </div>
     </div>
     <div class="card-meta" style="margin-bottom:10px;">
-      <span class="chip ${ind.gender==='수컷'?'alt':(ind.gender==='암컷'?'':'muted')}">${esc(ind.gender)}</span>
+      <span class="chip ${genderChipClass(ind.gender)}">${esc(ind.gender)}</span>
       ${morphLabel?`<span class="chip muted">${esc(morphLabel)}</span>`:''}
       ${(ind.morphPatterns||[]).map(p=>`<span class="chip muted">${esc(p)}</span>`).join('')}
       ${(ind.morphColors||[]).map(c=>`<span class="chip muted">${esc(c)}</span>`).join('')}
-      ${ind.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
+      ${ind.dotStatus==='있음'?`<span class="chip muted">점</span>`:''}
       <span class="chip ${growthStageChipClass(growthStageOfIndividual(ind))}">${esc(growthStageOfIndividual(ind))}</span>
       ${ind.provenStatus==='예'?`<span class="chip">프루븐</span>`:''}
       ${(ind.status && ind.status!=='보유')?`<span class="chip muted">${esc(ind.status)}</span>`:''}
@@ -4086,11 +4085,11 @@ function openHatchlingDetail(id){
       </div>
     </div>
     <div class="card-meta" style="margin-bottom:10px;">
-      <span class="chip muted">${esc(h.gender)}</span>
+      <span class="chip ${genderChipClass(h.gender)}">${esc(h.gender)}</span>
       ${h.morphHet?`<span class="chip muted">${esc(formatHetDisplay(h.morphHet))}</span>`:''}
       ${(h.morphPatterns||[]).map(p=>`<span class="chip muted">${esc(p)}</span>`).join('')}
       ${(h.morphColors||[]).map(cl=>`<span class="chip muted">${esc(cl)}</span>`).join('')}
-      ${h.dotStatus==='있음'?`<span class="chip alt">점 있음</span>`:''}
+      ${h.dotStatus==='있음'?`<span class="chip muted">점</span>`:''}
       <span class="chip ${growthStageChipClass(growthStageOfHatchling(h))}">${esc(growthStageOfHatchling(h))}</span>
       ${h.status?`<span class="chip ${h.status==='축양 개체'&&!h.promotedToId?'':'muted'}">${esc(hatchlingDisplayStatus(h))}</span>`:''}
     </div>
