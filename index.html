@@ -1173,14 +1173,18 @@ const INDIVIDUAL_SORTERS = {
 let hatchlingSort = 'age_desc';
 let hatchlingMorphFilter = '';
 const GENDER_SORT_RANK = { '수컷':0, '암컷':1, '미구분':2 };
+/* 같은 날 해칭한 클러치메이트(A,B알)가 번호 순서대로 섞이지 않도록, 값이 같으면 고유번호로 한 번 더 정렬한다.
+   숫자 크기 기준(0009 < 0010)으로 비교하고, 최신순 계열은 번호 큰 것부터 보인다. */
+const hatchIdAsc = (a,b)=>(a.id||'').localeCompare(b.id||'', undefined, {numeric:true});
+const hatchIdDesc = (a,b)=>hatchIdAsc(b,a);
 const HATCHLING_SORTERS = {
-  age_desc: (a,b)=>(b.hatchDate||'').localeCompare(a.hatchDate||''),
-  age_asc:  (a,b)=>(a.hatchDate||'').localeCompare(b.hatchDate||''),
-  price_desc: (a,b)=>(parseFloat(b.price)||0)-(parseFloat(a.price)||0),
-  price_asc:  (a,b)=>(parseFloat(a.price)||0)-(parseFloat(b.price)||0),
-  id_desc: (a,b)=>(b.id||'').localeCompare(a.id||''),
-  id_asc:  (a,b)=>(a.id||'').localeCompare(b.id||''),
-  gender: (a,b)=>(GENDER_SORT_RANK[a.gender]??3)-(GENDER_SORT_RANK[b.gender]??3) || (b.hatchDate||'').localeCompare(a.hatchDate||'')
+  age_desc: (a,b)=>(b.hatchDate||'').localeCompare(a.hatchDate||'') || hatchIdDesc(a,b),
+  age_asc:  (a,b)=>(a.hatchDate||'').localeCompare(b.hatchDate||'') || hatchIdAsc(a,b),
+  price_desc: (a,b)=>(parseFloat(b.price)||0)-(parseFloat(a.price)||0) || hatchIdDesc(a,b),
+  price_asc:  (a,b)=>(parseFloat(a.price)||0)-(parseFloat(b.price)||0) || hatchIdDesc(a,b),
+  id_desc: hatchIdDesc,
+  id_asc:  hatchIdAsc,
+  gender: (a,b)=>(GENDER_SORT_RANK[a.gender]??3)-(GENDER_SORT_RANK[b.gender]??3) || (b.hatchDate||'').localeCompare(a.hatchDate||'') || hatchIdDesc(a,b)
 };
 /* =====================================================================
    혈통(근친) 체크 엔진
