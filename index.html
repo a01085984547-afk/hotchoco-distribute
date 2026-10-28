@@ -2023,7 +2023,7 @@ function renderHatchlingListBody(items){
     <div class="card-top">
       <div style="display:flex;gap:10px;align-items:flex-start;">
         ${avatarHtml(h, 'hatchling')}
-        <div><div class="card-title">${esc(morphNameForLabel(h.morph,h.morphHet))||'모프 미정'}${h.morphHet?('<span style="font-size:12px;color:var(--ink-faint);font-weight:600;">'+esc(formatHetDisplay(h.morphHet))+'</span>'):''}</div><div class="card-id">${esc(h.id)} (알 ${esc(h.eggLabel)})</div></div>
+        <div><div class="card-title">${esc(h.morph)||'모프 미정'}${h.morphHet?('<span style="font-size:12px;color:var(--ink-faint);font-weight:600;">'+esc(formatHetDisplay(h.morphHet))+'</span>'):''}</div><div class="card-id">${esc(h.id)} (알 ${esc(h.eggLabel)})</div></div>
       </div>
       <div class="chip ${h.status==='축양 개체'&&!h.promotedToId?'':'muted'}">${esc(hatchlingDisplayStatus(h))}</div>
     </div>
