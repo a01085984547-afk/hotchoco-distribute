@@ -1177,13 +1177,19 @@ const GENDER_SORT_RANK = { '수컷':0, '암컷':1, '미구분':2 };
    숫자 크기 기준(0009 < 0010)으로 비교하고, 최신순 계열은 번호 큰 것부터 보인다. */
 const hatchIdAsc = (a,b)=>(a.id||'').localeCompare(b.id||'', undefined, {numeric:true});
 const hatchIdDesc = (a,b)=>hatchIdAsc(b,a);
+/* 무게순: 체중 기록이 없는 애들은 항상 맨 뒤로 보낸다 */
+function hatchWeightRank(h){
+  const w = latestWeightEntry(h);
+  const g = w ? parseFloat(w.grams) : NaN;
+  return isNaN(g) ? -1 : g;
+}
 const HATCHLING_SORTERS = {
   age_desc: (a,b)=>(b.hatchDate||'').localeCompare(a.hatchDate||'') || hatchIdDesc(a,b),
   age_asc:  (a,b)=>(a.hatchDate||'').localeCompare(b.hatchDate||'') || hatchIdAsc(a,b),
   price_desc: (a,b)=>(parseFloat(b.price)||0)-(parseFloat(a.price)||0) || hatchIdDesc(a,b),
   price_asc:  (a,b)=>(parseFloat(a.price)||0)-(parseFloat(b.price)||0) || hatchIdDesc(a,b),
-  id_desc: hatchIdDesc,
-  id_asc:  hatchIdAsc,
+  weight_desc: (a,b)=>hatchWeightRank(b)-hatchWeightRank(a) || hatchIdDesc(a,b),
+  weight_asc:  (a,b)=>{ const ra=hatchWeightRank(a), rb=hatchWeightRank(b); return (ra<0?Infinity:ra)-(rb<0?Infinity:rb) || hatchIdDesc(a,b); },
   gender: (a,b)=>(GENDER_SORT_RANK[a.gender]??3)-(GENDER_SORT_RANK[b.gender]??3) || (b.hatchDate||'').localeCompare(a.hatchDate||'') || hatchIdDesc(a,b)
 };
 /* =====================================================================
@@ -2065,8 +2071,8 @@ function renderHatchlingList(){
     {v:'age_asc',l:'개월순(오래된 해칭)'},
     {v:'price_desc',l:'가격 높은순'},
     {v:'price_asc',l:'가격 낮은순'},
-    {v:'id_desc',l:'고유번호 내림차순'},
-    {v:'id_asc',l:'고유번호 오름차순'},
+    {v:'weight_desc',l:'무게 무거운순'},
+    {v:'weight_asc',l:'무게 가벼운순'},
     {v:'gender',l:'성별순'}
   ];
   return `<div class="section-head"><h2>해칭개체</h2><span style="display:flex;align-items:center;gap:8px;"><button type="button" id="hatchling-show-sold-btn" class="chip-toggle ${hatchlingShowSold?'chip-selected':''}" style="padding:3px 10px;font-size:11.5px;" onclick="toggleHatchlingShowSold()">분양·등록 포함</button><span class="count" id="hatchling-count">${items.length} / ${state.hatchlings.length}마리</span></span></div>
