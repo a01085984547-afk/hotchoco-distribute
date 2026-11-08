@@ -137,6 +137,7 @@ main{padding:16px 16px 100px;}
 .field.full{grid-column:1/-1;}
 .field span{font-size:12.5px;font-weight:600;color:var(--ink-soft);}
 .field input,.field select,.field textarea{border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 11px;font-size:14.5px;font-family:var(--font-body);color:var(--ink);background:var(--surface-2);}
+.field input[type="date"]{width:100%;min-width:0;box-sizing:border-box;}
 .field textarea{min-height:64px;resize:vertical;font-family:var(--font-body);}
 .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--moss);outline-offset:-1px;}
 .form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 10px;min-width:0;}
@@ -2796,10 +2797,10 @@ function openIndividualForm(id){
       <div class="form-divider">사진 (최대 3장)</div>
       <div id="photo-strip"></div>
       <div class="form-grid" style="margin-top:14px;">
-        <label class="field full"><span>이름</span><input name="name" value="${esc(data.name||'')}" required></label>
+        <label class="field"><span>이름</span><input name="name" value="${esc(data.name||'')}" required></label>
         <label class="field"><span>성별</span><select name="gender" id="ownGenderField" onchange="toggleFemaleOnlyFields('own')">${selOpts(['수컷','암컷','미구분'],data.gender)}</select></label>
         <label class="field"><span>해칭일</span><input type="date" name="hatchDate" id="ownHatchDateField" value="${esc(data.hatchDate||'')}" onchange="updateOwnAgeNote()"></label>
-        <label class="field"><span>모프(기본)</span>${buildMorphSelectHtml('own', data.morph||'')}</label>
+        <label class="field"><span>모프</span>${buildMorphSelectHtml('own', data.morph||'')}</label>
         <label class="field"><span>헷(Het) 여부</span>${buildHetSelectHtml('own', data.morphHet||'')}</label>
         <label class="field"><span>점 여부</span><select name="dotStatus">${selOpts(['있음','없음','미상'],data.dotStatus)}</select></label>
         <label class="field"><span>출신 구분</span><select name="originType" id="ownOriginTypeField" onchange="updateAdoptionDateLabel()">${selOpts(['외부 영입','해칭'],data.originType)}</select></label>
@@ -4208,8 +4209,10 @@ function openHatchlingForm(id, prefill){
         <label class="field"><span>산란일</span><input type="date" name="layDate" id="hatchLayDateField" value="${esc(data.layDate||'')}" onchange="updateHatchIncubationCalc()"></label>
         <label class="field"><span>해칭일</span><input type="date" name="hatchDate" id="hatchHatchDateField" value="${esc(data.hatchDate||'')}" onchange="updateHatchIncubationCalc()"></label>
         <label class="field"><span>인큐베이션 일수</span><input type="number" name="incubationDays" id="hatchIncubationDaysField" value="${data.incubationDays??''}" min="0" readonly style="background:var(--surface-2);color:var(--ink-soft);"></label>
-        <label class="field"><span>확정 모프</span>${buildMorphSelectHtml('hatch', data.morph||'')}</label>
+        <label class="field"><span>모프</span>${buildMorphSelectHtml('hatch', data.morph||'')}</label>
         <label class="field"><span>헷(Het) 여부</span>${buildHetSelectHtml('hatch', data.morphHet||'')}</label>
+        <label class="field"><span>성별</span><select name="gender">${selOpts(['미구분','수컷','암컷'],data.gender)}</select></label>
+        <label class="field"><span>점 여부</span><select name="dotStatus">${selOpts(['없음','있음','미상'],data.dotStatus)}</select></label>
       </div>
       <div class="readonly-note" style="margin-top:-6px;">인큐베이션 일수는 산란일·해칭일로 자동 계산돼요.</div>
       <div class="readonly-note" id="hatchAgeNote" style="margin-top:-8px;">${data.hatchDate?`현재 나이: ${ageLabel(data.hatchDate)}`:''}</div>
@@ -4217,10 +4220,6 @@ function openHatchlingForm(id, prefill){
       <div class="readonly-note" style="margin-top:-6px;">적으면 해칭일 날짜로 체중 기록에 같이 저장돼요.</div>`:''}
       <div class="field full">${buildCollapsibleChipGroup('hatchPatterns', '패턴', PATTERN_TRAITS, data.morphPatterns||[])}</div>
       <div class="field full">${buildCollapsibleChipGroup('hatchColors', '컬러/트레잇', COLOR_TRAITS, data.morphColors||[])}</div>
-      <div class="form-grid">
-        <label class="field"><span>성별</span><select name="gender">${selOpts(['미구분','수컷','암컷'],data.gender)}</select></label>
-        <label class="field"><span>점 여부</span><select name="dotStatus">${selOpts(['없음','있음','미상'],data.dotStatus)}</select></label>
-      </div>
       <div class="form-divider">사육 상태</div>
       ${collapsibleSection('editHatchStatus', '킵·브리딩·상태·분양가 수정', `
       <div class="form-grid">
