@@ -1156,7 +1156,7 @@ function getTempHatchBreakdown(){
 }
 
 /* ---------------- 메이팅 정렬(산란·알 탭) ---------------- */
-let eggGroupSort = 'recent';
+let eggGroupSort = 'hatch_soon';
 let individualSort = 'age_desc';
 const INDIVIDUAL_SORTERS = {
   age_desc: (a,b)=>(a.hatchDate||'').localeCompare(b.hatchDate||''), // 나이 많은순 = 해칭일이 이른(작은) 개체가 먼저
@@ -2810,6 +2810,8 @@ function openIndividualForm(id){
       <div id="ownFemaleOnlySection" style="display:${data.gender==='암컷'?'block':'none'};">
         <div class="readonly-note" style="margin-top:0;">무정란 산란 기록(메이팅 없이 혼자 낳은 경우 포함)은 저장 후 상세보기의 '무정란 산란 기록'에서 추가·관리할 수 있어요.</div>
       </div>
+      ${isNew?`<div class="form-grid"><label class="field"><span>체중 (g)</span><input type="number" name="newWeight" step="0.1" min="0" inputmode="decimal" placeholder="선택"></label></div>
+      <div class="readonly-note" style="margin-top:-6px;">적으면 오늘 날짜로 체중 기록에 같이 저장돼요.</div>`:''}
       <div class="readonly-note" id="ownAgeNote" style="margin-top:-8px;">${data.hatchDate?`현재 나이: ${ageLabel(data.hatchDate)}`:''}</div>
       <div class="field full">${buildCollapsibleChipGroup('ownPatterns', '패턴', PATTERN_TRAITS, data.morphPatterns||[])}</div>
       <div class="field full">${buildCollapsibleChipGroup('ownColors', '컬러/트레잇', COLOR_TRAITS, data.morphColors||[])}</div>
@@ -2910,10 +2912,13 @@ async function saveIndividual(id){
   obj.damHet = readHetValue('dam');
   obj.damPatterns = readChipGroup('damPatterns');
   obj.damColors = readChipGroup('damColors');
+  const nw = parseFloat(obj.newWeight);
+  delete obj.newWeight;
   if(id){
     const item = state.individuals.find(i=>i.id===id);
     Object.assign(item, obj);
   } else {
+    if(!isNaN(nw) && nw>0) obj.weightLog = [{ id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), date:todayISO(), grams:nw }];
     obj.id = nextEntityId(genderIdPrefix(obj.gender), state.individuals, 4);
     state.individuals.push(obj);
   }
@@ -4208,6 +4213,8 @@ function openHatchlingForm(id, prefill){
       </div>
       <div class="readonly-note" style="margin-top:-6px;">인큐베이션 일수는 산란일·해칭일로 자동 계산돼요.</div>
       <div class="readonly-note" id="hatchAgeNote" style="margin-top:-8px;">${data.hatchDate?`현재 나이: ${ageLabel(data.hatchDate)}`:''}</div>
+      ${isNew?`<div class="form-grid"><label class="field"><span>체중 (g)</span><input type="number" name="newWeight" step="0.1" min="0" inputmode="decimal" placeholder="선택"></label></div>
+      <div class="readonly-note" style="margin-top:-6px;">적으면 해칭일 날짜로 체중 기록에 같이 저장돼요.</div>`:''}
       <div class="field full">${buildCollapsibleChipGroup('hatchPatterns', '패턴', PATTERN_TRAITS, data.morphPatterns||[])}</div>
       <div class="field full">${buildCollapsibleChipGroup('hatchColors', '컬러/트레잇', COLOR_TRAITS, data.morphColors||[])}</div>
       <div class="form-grid">
@@ -4278,10 +4285,13 @@ async function saveHatchling(id){
   obj.photos = formPhotoState.photos;
   obj.primaryPhotoId = formPhotoState.primaryId;
   obj.salePlatform = readSalePlatformValue('hatch');
+  const nw = parseFloat(obj.newWeight);
+  delete obj.newWeight;
   if(id){
     const item = state.hatchlings.find(h=>h.id===id);
     Object.assign(item, obj);
   } else {
+    if(!isNaN(nw) && nw>0) obj.weightLog = [{ id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), date:obj.hatchDate||todayISO(), grams:nw }];
     const yy = currentYY();
     obj.id = nextEntityId(ID_PREFIX+'-H'+yy+'-', state.hatchlings, 4);
     obj.promotedToId = null;
@@ -4331,6 +4341,8 @@ function promoteHatchling(hatchId){
     <form id="promote-form" onsubmit="event.preventDefault(); confirmPromote('${hatchId}');">
       <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;">해칭개체 <b>${esc(h.id)}</b> (${esc(h.morph)||'모프 미정'})를 새 개체로 등록합니다. 부모·해칭일·모프 정보는 그대로 이어집니다.</p>
       <label class="field full"><span>개체 이름</span><input name="name" required placeholder="예: 초코"></label>
+      <label class="field full"><span>체중 (g)</span><input type="number" name="newWeight" step="0.1" min="0" inputmode="decimal" placeholder="${(latestWeightEntry(h)||{}).grams?('선택 · 최근 기록 '+esc(String((latestWeightEntry(h)||{}).grams))+'g'):'선택'}"></label>
+      <div class="readonly-note" style="margin-top:-6px;">적으면 오늘 날짜로 체중 기록에 추가돼요. 기존 해칭개체 체중 기록은 그대로 이어져요.</div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">취소</button>
         <button type="submit" class="btn btn-primary">${genderUnknown?'그래도 등록하기':'등록하기'}</button>
@@ -4344,13 +4356,15 @@ async function confirmPromote(hatchId){
   const h = state.hatchlings.find(x=>x.id===hatchId);
   if(!h) return;
   const form = document.getElementById('promote-form');
-  const name = new FormData(form).get('name');
+  const pfd = new FormData(form);
+  const name = pfd.get('name');
+  const nw = parseFloat(pfd.get('newWeight'));
   const newInd = {
     id: nextEntityId(genderIdPrefix(h.gender), state.individuals, 4),
     name, gender: h.gender==='미구분' ? '미구분' : h.gender,
     hatchDate: h.hatchDate||'', morph: h.morph||'', morphHet: h.morphHet||'',
     morphPatterns: h.morphPatterns||[], morphColors: h.morphColors||[],
-    dotStatus: h.dotStatus||'미상', weightLog: h.weightLog||[],
+    dotStatus: h.dotStatus||'미상', weightLog: (h.weightLog||[]).slice(),
     photos: h.photos||[], primaryPhotoId: h.primaryPhotoId||null,
     originType:'해칭', originCompany:'', adoptionDate: todayISO(),
     sireId: h.sireId||null, sireName: h.sireName||'',
@@ -4363,6 +4377,7 @@ async function confirmPromote(hatchId){
     status:'보유',
     memo:`해칭개체 ${h.id}에서 등록됨`
   };
+  if(!isNaN(nw) && nw>0) newInd.weightLog.push({ id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), date:todayISO(), grams:nw });
   state.individuals.push(newInd);
   h.promotedToId = newInd.id;
   closeModal();
