@@ -184,7 +184,7 @@ main{padding:16px 16px 100px;}
 
 
 .bloodline-banner{border-radius:var(--radius-sm);padding:12px 13px;margin:6px 0 14px;border:1px solid;font-size:13px;line-height:1.55;}
-.bloodline-banner.danger{background:var(--danger-soft);border-color:#E9C4B8;color:#7A2C1F;}
+.bloodline-banner.danger,.bloodline-banner.error{background:var(--danger-soft);border-color:#E9C4B8;color:#7A2C1F;}
 .bloodline-banner.warning{background:var(--warning-soft);border-color:#E9D3A8;color:#6B4A17;}
 .bloodline-banner.caution{background:var(--caution-soft);border-color:#DFD5A6;color:#5C5324;}
 .bloodline-banner.safe{background:var(--safe-soft);border-color:#BFE0CA;color:#1E5C38;}
@@ -1200,6 +1200,9 @@ const HATCHLING_SORTERS = {
      이름만 있는 조상은 그 지점에서 멈춘다(더 위 세대는 알 수 없음).
    - 이름만 있는 조상이라도 "이름+출신업체"가 같으면 동일 개체로 간주해
      겹침을 잡아낸다.
+   - 판정은 '두 부모를 교배했을 때 태어날 후대의 예상 근친계수(COI)'로 한다.
+     계보 전체를 그래프로 만들고 혈연계수(kinship, 관계행렬 방식)로 계산 → 후대 COI = φ(부,모).
+     공통 조상이 여러 명이거나 한 조상이 여러 경로로 나와도 모두 정확히 반영된다.
    - "외부 혈통 참조"(state.externalLineageRefs): 등록되지 않은/이름만 아는
      조상에 대해 "이 개체(또는 이름만 있는 조상)가 [유명 조상]의 N세손이다"
      라고 사용자가 직접 적어둔 참고 정보. 계보를 타고 올라가다 이 참조가
@@ -1236,185 +1239,361 @@ function parentRef(entity, side){
   return null;
 }
 
-/* subjectKey: 등록된 개체는 'IND:id'/'HAT:id', 이름만 있는 조상은 그 이름 그대로(대소문자/공백 정리) */
+/* subjectKey: 등록된 개체는 'IND:id'/'HAT:id', 이름만 있는 조상은 그 이름 그대로(공백 정리) */
 function findExternalRef(subjectKey){
   if(!subjectKey) return null;
   return (state.externalLineageRefs||[]).find(r=>r.subjectKey===subjectKey) || null;
 }
-function injectExternalRef(visited, subjectKey, baseGen, baseBranch, maxGen){
-  const ref = findExternalRef(subjectKey);
-  if(!ref) return;
-  /* ref.generations는 "그 조상을 1세로 쳤을 때 대상이 몇 세인지"(예: 자식=2세, 손주=3세).
-     실제 세대 차이(칸 수)는 여기서 1을 뺀 값 */
-  const hops = Math.max(1, (parseInt(ref.generations,10)||2) - 1);
-  const newGen = baseGen + hops;
-  if(newGen > maxGen) return;
-  const newBranch = ref.side || baseBranch || null;
-  const key = 'EXTREF:'+ref.ancestorName.trim();
-  const existing = visited.get(key);
-  if(!existing || existing.gen>newGen){
-    visited.set(key, {gen:newGen, label:ref.ancestorName, linkedId:null, branch:newBranch, estimated:true});
-  }
+
+/* ---- 앱 운영 기준 (여기 한 곳만 고치면 전체 판정이 바뀜) ----
+   예상 후대 근친계수(COI)가  cautionFrom 미만 = 안전 / cautionFrom 이상 ~ dangerFrom 미만 = 주의 / dangerFrom 이상 = 위험.
+   사용자가 정한 운영 기준일 뿐, 크레스티드게코에서 검증된 건강 위험 임계값이 아님. */
+const COI_THRESHOLDS = { cautionFrom: 0.03125, dangerFrom: 0.0625 };
+const PEDIGREE_CONFIDENCE_GENS = 6; /* 혈통 '확인 수준' 집계에만 쓰는 대수. COI 계산 자체는 저장된 계보 전체를 사용 */
+
+function fmtCoiPercent(coi){
+  return String(Number((coi*100).toFixed(6)));
 }
 
-function buildAncestryMap(startEntity, maxGen){
-  maxGen = maxGen || 6;
-  const visited = new Map(); // key -> {gen, label, linkedId, branch, estimated?}
-  const queue = [{ent:startEntity, gen:0, branch:null}];
-  const seenEnt = new Set();
-  injectExternalRef(visited, compositeKeyForEntity(startEntity), 0, null, maxGen);
-  while(queue.length){
-    const {ent, gen, branch} = queue.shift();
-    if(gen>=maxGen) continue;
+/* 두 부모(roots)의 계보를 하나의 그래프로 만든다.
+   node: {key,label,kind:'entity'|'named'|'missing'|'virtual', sire,dam(부모 node key 또는 null), founder, estSlots{sire,dam}, refKey}
+   useRefs=false면 외부 혈통 참조(추정 연결)를 무시하고 확정된 연결만 쓴다. */
+function buildPedigreeGraph(roots, useRefs){
+  const nodes = new Map();
+  const notes = { ignoredRefs: [] };
+  const refs = useRefs ? (state.externalLineageRefs||[]) : [];
+  let virtSeq = 0;
+  const hatchIds = new Set((state.hatchlings||[]).map(h=>h.id));
+
+  function newNode(key, label, kind, extra){
+    const n = Object.assign({ key, label, kind, sire:null, dam:null, founder:false, estSlots:{sire:false,dam:false}, refKey:null }, extra||{});
+    nodes.set(key, n);
+    return n;
+  }
+  function applyRefs(node){
+    if(!node.refKey) return;
+    refs.filter(r=>r.subjectKey===node.refKey).forEach(r=>applyRef(node, r));
+  }
+  function ancestorNodeForRef(name){
+    const nm = (name||'').trim();
+    const ind = (state.individuals||[]).find(i=>(i.name||'').trim()===nm);
+    if(ind) return entityNode(ind);
+    return namedNode(nm, '');
+  }
+  function applyRef(node, r){
+    /* generations: 조상=1세, 그 자식=2세 → 실제 부모-자식 연결 횟수는 generations-1 */
+    const hops = Math.max(1, (parseInt(r.generations,10)||2) - 1);
+    let slot = null;
+    if((r.side==='sire'||r.side==='dam') && !node[r.side]) slot = r.side;
+    else if(!node.sire) slot = 'sire';
+    else if(!node.dam) slot = 'dam';
+    if(!slot){ notes.ignoredRefs.push(`${node.label} → ${r.ancestorName}`); return; }
+    const anc = ancestorNodeForRef(r.ancestorName);
+    let cur = node, curSlot = slot;
+    for(let i=1;i<hops;i++){
+      /* 중간 계보를 모르는 구간: 미상 중간 조상(부모 한쪽만 알고 다른 쪽은 미상)을 한 칸씩 둔다 */
+      const v = newNode('VIRT:'+(r.id||('r'+(virtSeq)))+':'+(virtSeq++), '(중간 조상 미상)', 'virtual');
+      cur[curSlot] = v.key; cur.estSlots[curSlot] = true;
+      cur = v; curSlot = 'sire';
+    }
+    cur[curSlot] = anc.key; cur.estSlots[curSlot] = true;
+  }
+  function namedNode(name, company){
+    const nm = (name||'').trim(), co = (company||'').trim();
+    const key = 'NAME:'+nm+'|'+co;
+    if(nodes.has(key)) return nodes.get(key);
+    const n = newNode(key, nm||'이름 미상', 'named', { refKey: nm, company: co });
+    applyRefs(n);
+    return n;
+  }
+  function entityNode(ent){
+    /* 승격된 해칭개체는 그 개체와 같은 동물이므로 승격된 개체 쪽 노드로 통일 */
+    if(ent && ent.promotedToId && hatchIds.has(ent.id)){
+      const p = (state.individuals||[]).find(i=>i.id===ent.promotedToId);
+      if(p) ent = p;
+    }
+    const key = 'ID:'+ent.id;
+    if(nodes.has(key)) return nodes.get(key);
+    const isHat = hatchIds.has(ent.id) && !(state.individuals||[]).some(i=>i.id===ent.id);
+    const n = newNode(key, ent.name||ent.morph||ent.id, 'entity', { ent, founder: !!ent.lineageFounder, refKey:(isHat?'HAT:':'IND:')+ent.id });
     ['sire','dam'].forEach(side=>{
       const ref = parentRef(ent, side);
       if(!ref) return;
-      const key = ref.type==='linked' ? ('ID:'+ref.id) : ('NAME:'+ref.key);
-      const newGen = gen+1;
-      const newBranch = branch===null ? side : branch; // 1대에서 정해진 쪽(부/모)을 그대로 물려받음
-      const label = ent[side+'Name'] || (ref.type==='linked' ? ((state.individuals.find(i=>i.id===ref.id)||{}).name||'?') : '이름 미상');
-      const existing = visited.get(key);
-      if(!existing || existing.gen>newGen){
-        visited.set(key, {gen:newGen, label, linkedId: ref.type==='linked'?ref.id:null, branch:newBranch});
-      }
-      /* 이름만 있는 조상은 "이름만으로"도 매칭될 수 있게 별도 키로 한 번 더 등록해둔다.
-         이래야 다른 계보에서 외부 혈통 참조로 같은 이름까지 이어져 온 경우와도 서로 겹침이 잡힌다. */
-      if(ref.type==='named'){
-        const nameOnlyKey = 'EXTREF:'+label.trim();
-        const existing2 = visited.get(nameOnlyKey);
-        if(!existing2 || existing2.gen>newGen){
-          visited.set(nameOnlyKey, {gen:newGen, label, linkedId:null, branch:newBranch});
-        }
-      }
       if(ref.type==='linked'){
-        injectExternalRef(visited, 'IND:'+ref.id, newGen, newBranch, maxGen);
-      } else {
-        injectExternalRef(visited, (ent[side+'Name']||'').trim(), newGen, newBranch, maxGen);
-      }
-      if(ref.type==='linked' && !seenEnt.has('ID:'+ref.id+':'+newGen)){
-        const nextInd = state.individuals.find(i=>i.id===ref.id);
-        if(nextInd){
-          seenEnt.add('ID:'+ref.id+':'+newGen);
-          queue.push({ent:nextInd, gen:newGen, branch:newBranch});
+        const p = (state.individuals||[]).find(i=>i.id===ref.id);
+        if(p){ n[side] = entityNode(p).key; }
+        else {
+          /* 연결된 ID의 개체가 이미 없는 경우: 그 지점에서 멈춘다(이름은 기록 그대로 표시) */
+          const mk = 'ID:'+ref.id;
+          if(!nodes.has(mk)) newNode(mk, ent[side+'Name']||'(삭제된 개체)', 'missing');
+          n[side] = mk;
         }
+      } else {
+        n[side] = namedNode(ent[side+'Name'], ent[side+'Company']).key;
       }
     });
+    applyRefs(n);
+    return n;
   }
-  return visited;
+  const rootNodes = roots.map(r=>entityNode(r));
+  return { nodes, notes, rootKeys: rootNodes.map(n=>n.key) };
 }
 
-/* 세대수 + 부계/모계를 한국어 호칭으로: 1대=부/모, 2대=조부모/외조부모, 3대=증조부모/외증조부모,
-   4대 이상은 별도 호칭은 없지만 부계/모계 구분은 계속 붙여준다("N대 위 조상(부계)"처럼) */
-function kinshipLabel(gen, branch){
-  if(gen===1) return branch==='sire' ? '부' : (branch==='dam' ? '모' : '부모 중 한쪽(미상)');
-  if(gen===2) return branch==='sire' ? '조부모(부계)' : (branch==='dam' ? '외조부모(모계)' : '조부모');
-  if(gen===3) return branch==='sire' ? '증조부모(부계)' : (branch==='dam' ? '외증조부모(모계)' : '증조부모');
-  if(!branch) return `${gen}대 위 조상`;
-  return `${gen}대 위 조상(${branch==='sire'?'부계':'모계'})`;
+/* 계보 순환 검사 + 부모가 먼저 오는 순서(rank) 만들기. 순환이면 그 경로(라벨 배열) 반환 */
+function topoOrderPedigree(nodes){
+  const color = new Map(); // 1=방문 중, 2=끝
+  const order = [];
+  let cycle = null;
+  const stack = [];
+  function visit(key){
+    if(cycle) return;
+    const c = color.get(key);
+    if(c===2) return;
+    if(c===1){
+      const idx = stack.indexOf(key);
+      cycle = stack.slice(idx).concat([key]).map(k=>nodes.get(k).label);
+      return;
+    }
+    color.set(key,1); stack.push(key);
+    const n = nodes.get(key);
+    [n.sire, n.dam].forEach(p=>{ if(p) visit(p); });
+    stack.pop(); color.set(key,2); order.push(key);
+  }
+  nodes.forEach((_,k)=>visit(k));
+  if(cycle) return { cycle };
+  const rank = new Map(); order.forEach((k,i)=>rank.set(k,i));
+  return { order, rank };
 }
 
-function entityKeyOf(ent){
-  return 'ID:'+ent.id;
+/* 혈연계수(kinship) φ(x,y): 두 개체에서 무작위로 뽑은 대립유전자가 같은 조상 유래일 확률.
+   φ(x,x) = (1+F_x)/2, F_x = φ(부,모). x≠y면 더 어린 쪽의 부모 둘로 나눠 평균. 부모 미상은 '무관한 founder'로 가정(0).
+   두 부모를 교배한 후대의 COI = φ(부,모) = A[부,모]/2. 공통 조상이 여러 명이거나 조상이 여러 경로로 반복돼도
+   재귀가 모든 경로를 한 번씩 정확히 합산한다(공통 조상 자신의 근친 (1+F)도 자동 반영). */
+function makeKinship(nodes, rank){
+  const memo = new Map();
+  function kin(a, b){
+    if(!a || !b) return 0;
+    let x = a, y = b;
+    if(rank.get(x) < rank.get(y)){ const t=x; x=y; y=t; } // x가 더 어린(나중 순서) 쪽
+    const mk = rank.get(x)+'_'+rank.get(y);
+    if(memo.has(mk)) return memo.get(mk);
+    const nx = nodes.get(x);
+    let v;
+    if(x===y){
+      v = 0.5 * (1 + kin(nx.sire, nx.dam));
+    } else if(!nx.sire && !nx.dam){
+      v = 0;
+    } else {
+      v = 0.5 * (kin(nx.sire, y) + kin(nx.dam, y));
+    }
+    memo.set(mk, v);
+    return v;
+  }
+  return kin;
+}
+
+/* 시작 노드에서 위로 올라가며 각 조상까지의 최소 대수. exactOnly=true면 추정 연결을 건너뛴다 */
+function ancestorGenerations(nodes, startKey, exactOnly){
+  const gens = new Map();
+  let level = [startKey], g = 0;
+  const seen = new Set([startKey]);
+  while(level.length){
+    g++;
+    const next = [];
+    level.forEach(k=>{
+      const n = nodes.get(k);
+      ['sire','dam'].forEach(side=>{
+        const p = n[side];
+        if(!p) return;
+        if(exactOnly && n.estSlots[side]) return;
+        if(!gens.has(p)) gens.set(p, g);
+        if(!seen.has(p)){ seen.add(p); next.push(p); }
+      });
+    });
+    level = next;
+  }
+  return gens;
+}
+
+/* 혈통 확인 수준: 한 부모 기준으로 1대부터 위로, 모든 조상 자리(부·모)가 빠짐없이 채워진 대수.
+   '부모 없음 확정'으로 표시한 개체의 위쪽은 '없음이 확인된 것'이라 빈칸으로 안 센다(부모를 그냥 모르는 것과 구분). */
+function pedigreeCompleteness(nodes, rootKey, maxGen){
+  let level = [rootKey], known = 0, terminated = false;
+  for(let g=1; g<=maxGen; g++){
+    const next = [];
+    let unknown = 0;
+    level.forEach(k=>{
+      const n = nodes.get(k);
+      ['sire','dam'].forEach(side=>{
+        if(n[side]) next.push(n[side]);
+        else if(!n.founder) unknown++;
+      });
+    });
+    if(unknown>0) return { complete: known, terminated:false };
+    known = g;
+    if(next.length===0){ terminated = true; break; }
+    level = next;
+  }
+  return { complete: known, terminated };
+}
+
+function pedigreeUnknownNodes(nodes, rootKeys){
+  /* 두 부모의 조상 전체 중 부모 자리가 비어 있는(그리고 '부모 없음 확정'이 아닌) 개체 수 */
+  const seen = new Set(), stack = rootKeys.slice();
+  let count = 0;
+  while(stack.length){
+    const k = stack.pop();
+    if(seen.has(k)) continue;
+    seen.add(k);
+    const n = nodes.get(k);
+    if((!n.sire || !n.dam) && !n.founder) count++;
+    if(n.sire) stack.push(n.sire);
+    if(n.dam) stack.push(n.dam);
+  }
+  return count;
+}
+
+function ambiguousPedigreeNames(nodes){
+  /* 이름은 같은데 서로 다른 조상으로 잡힌 경우(출신업체가 다르거나 한쪽만 적힘, 등록 개체와 이름만 같음). 확정 병합하지 않고 확인 대상으로 표시 */
+  const byName = new Map();
+  nodes.forEach(n=>{
+    if(n.kind==='virtual') return;
+    const nm = (n.label||'').trim().toLowerCase();
+    if(!nm) return;
+    if(!byName.has(nm)) byName.set(nm, []);
+    byName.get(nm).push(n);
+  });
+  const out = [];
+  byName.forEach((list, nm)=>{
+    if(list.length>1 && list.some(n=>n.kind==='named')) out.push(list[0].label);
+  });
+  return out;
 }
 
 function compareBloodline(entA, entB){
   if(!entA || !entB) return null;
-  if(entA===entB || (entA.id && entB.id && entA.id===entB.id && entA.name!==undefined && entB.name!==undefined)){
-    // same individual object reference check by id only meaningful for individuals
+  const emptyExtra = { common:[], commonHidden:0, confidence:null, assumptions:[], notes:[], coi:null, coiConfirmedOnly:null, direct:null };
+  const nameA = entA.name||entA.morph||entA.id, nameB = entB.name||entB.morph||entB.id;
+  const g = buildPedigreeGraph([entA, entB], true);
+  const keyA = g.rootKeys[0], keyB = g.rootKeys[1];
+  if(keyA===keyB){
+    return Object.assign({}, emptyExtra, { level:'error', title:'선택 오류 — 같은 개체', detail:'같은 개체를 두 번 선택했어요. 교배할 수 없는 조합이에요.' });
   }
-  if(entA.id===entB.id){
-    return { level:'danger', title:'동일 개체', detail:'같은 개체를 선택했습니다.', common:[] };
+  const topo = topoOrderPedigree(g.nodes);
+  if(topo.cycle){
+    return Object.assign({}, emptyExtra, { level:'error', title:'계보 오류 — 순환 연결',
+      detail:`계보가 스스로 되돌아오는 잘못된 연결이 있어 계산할 수 없어요: ${topo.cycle.join(' → ')}. 해당 개체들의 부·모 연결(또는 외부 혈통 참조)을 확인해주세요.` });
   }
-  const mapA = buildAncestryMap(entA);
-  const mapB = buildAncestryMap(entB);
-  const keyA = entityKeyOf(entA), keyB = entityKeyOf(entB);
+  const kin = makeKinship(g.nodes, topo.rank);
+  const coi = kin(keyA, keyB);
 
-  // direct ancestor relation
-  if(mapB.has(keyA)){
-    const g = mapB.get(keyA).gen;
-    return {
-      level:'danger',
-      title: g===1 ? '부모-자식 관계' : (g===2 ? '조부모-손주 관계' : `직계 조상 관계 (${g}대)`),
-      detail:`${entA.name||entA.id}(이)가 ${entB.name||entB.id}의 ${g}대 위 직계 조상입니다. 페어링을 피해주세요.`,
-      common:[]
-    };
-  }
-  if(mapA.has(keyB)){
-    const g = mapA.get(keyB).gen;
-    return {
-      level:'danger',
-      title: g===1 ? '부모-자식 관계' : (g===2 ? '조부모-손주 관계' : `직계 조상 관계 (${g}대)`),
-      detail:`${entB.name||entB.id}(이)가 ${entA.name||entA.id}의 ${g}대 위 직계 조상입니다. 페어링을 피해주세요.`,
-      common:[]
-    };
-  }
+  /* 추정 연결(외부 혈통 참조)을 빼고 확정 연결만으로 계산한 값 - 다르면 추정이 결과에 영향을 준 것 */
+  const gc = buildPedigreeGraph([entA, entB], false);
+  const topoC = topoOrderPedigree(gc.nodes);
+  const coiConfirmedOnly = topoC.cycle ? null : makeKinship(gc.nodes, topoC.rank)(gc.rootKeys[0], gc.rootKeys[1]);
 
-  const common = [];
-  mapA.forEach((infoA, key)=>{
-    if(mapB.has(key)){
-      const infoB = mapB.get(key);
-      common.push({ key, label:infoA.label, genA:infoA.gen, genB:infoB.gen, branchA:infoA.branch, branchB:infoB.branch, estimated: !!(infoA.estimated||infoB.estimated) });
-    }
+  /* 설명용: 공통 조상과 양쪽 대수 */
+  const gensA = ancestorGenerations(g.nodes, keyA, false), gensB = ancestorGenerations(g.nodes, keyB, false);
+  const exA = ancestorGenerations(g.nodes, keyA, true), exB = ancestorGenerations(g.nodes, keyB, true);
+  let direct = null;
+  if(gensB.has(keyA)) direct = { ancestor:nameA, descendant:nameB, gen:gensB.get(keyA) };
+  else if(gensA.has(keyB)) direct = { ancestor:nameB, descendant:nameA, gen:gensA.get(keyB) };
+  const commonKeys = [];
+  gensA.forEach((_,k)=>{ if(gensB.has(k)) commonKeys.push(k); });
+  /* 다른 공통 조상의 윗대일 뿐인 조상은 설명에서 접는다(계산에는 이미 모두 반영됨) */
+  const hidden = new Set();
+  commonKeys.forEach(k=>{
+    const up = ancestorGenerations(g.nodes, k, false);
+    up.forEach((_,z)=>{ if(commonKeys.includes(z)) hidden.add(z); });
   });
+  const common = commonKeys.filter(k=>!hidden.has(k)).map(k=>({
+    key:k, label:g.nodes.get(k).label, genA:gensA.get(k), genB:gensB.get(k),
+    estimated: (exA.get(k)!==gensA.get(k)) || (exB.get(k)!==gensB.get(k))
+  })).sort((a,b)=>(a.genA+a.genB)-(b.genA+b.genB) || a.label.localeCompare(b.label));
 
-  if(common.length===0){
-    return {
-      level:'safe',
-      title:'확인된 계보 내 공통 조상 없음',
-      detail:'등록된 혈통 정보 범위 안에서는 겹치는 조상이 발견되지 않았습니다.',
-      common:[]
-    };
+  /* 혈통 확인 수준(위험 등급과 별개) */
+  const compA = pedigreeCompleteness(g.nodes, keyA, PEDIGREE_CONFIDENCE_GENS);
+  const compB = pedigreeCompleteness(g.nodes, keyB, PEDIGREE_CONFIDENCE_GENS);
+  const unknownCount = pedigreeUnknownNodes(g.nodes, [keyA, keyB]);
+  const hasEstimated = common.some(c=>c.estimated) || (coiConfirmedOnly!==null && coiConfirmedOnly!==coi);
+  const anyRef = [...g.nodes.values()].some(n=>n.estSlots.sire||n.estSlots.dam);
+  const minComplete = Math.min(compA.complete, compB.complete);
+  let confLevel, confLabel;
+  if(compA.terminated && compB.terminated && unknownCount===0 && !anyRef){ confLevel='complete'; confLabel='확정(계보 끝까지 확인)'; }
+  else if(minComplete>=3){ confLevel='high'; confLabel='높음'; }
+  else if(minComplete>=2){ confLevel='medium'; confLabel='보통'; }
+  else { confLevel='low'; confLabel='낮음'; }
+  const fmtComp = (c)=> c.terminated ? '끝까지 확인' : `완전 확인 ${c.complete}대`;
+  const confidence = { level:confLevel, label:confLabel, sideA:`${nameA}: ${fmtComp(compA)}`, sideB:`${nameB}: ${fmtComp(compB)}`,
+                       unknownCount, gensNote:`확인 수준은 ${PEDIGREE_CONFIDENCE_GENS}대까지 집계해요(근친계수 계산은 저장된 계보 전체를 사용).` };
+
+  const assumptions = [];
+  if(unknownCount>0) assumptions.push('계산 가정: 부모를 알 수 없는 조상은 서로 무관하고 근친이 아닌 개체(founder)로 보고 계산했어요.');
+  const notes = [];
+  const ambiguous = ambiguousPedigreeNames(g.nodes);
+  if(ambiguous.length) notes.push(`이름이 같은 조상(${ambiguous.slice(0,3).join(', ')}${ambiguous.length>3?' 외':''})이 서로 다른 개체로 잡혀 있어요. 같은 개체인지 확인이 필요해서 합치지 않고 계산했어요. 같은 개체라면 개체 ID로 연결하거나 출신 업체 표기를 맞춰주세요.`);
+  if(g.notes.ignoredRefs.length) notes.push(`부모가 이미 모두 입력돼 있어 적용하지 않은 외부 혈통 참조가 있어요: ${g.notes.ignoredRefs.slice(0,3).join(', ')}`);
+  if(hasEstimated){
+    const only = (coiConfirmedOnly!==null && coiConfirmedOnly!==coi) ? ` (추정 연결을 빼고 확정된 연결만 보면 ${fmtCoiPercent(coiConfirmedOnly)}%)` : '';
+    notes.push(`외부 혈통 참조(직접 입력한 'N세' 정보)를 근거로 한 추정 연결이 포함돼 있어요${only}. 중간 계보는 모르는 상태라 완전한 혈통으로 보지 않았어요.`);
   }
 
-  const sameParents = common.filter(c=>c.genA===1 && c.genB===1);
-  // F-등급: 공통 조상 하나당 min(genA,genB)를 그 조상까지의 '세대'로 보고,
-  // 여러 공통 조상 중 가장 가까운(작은) 값을 전체 근친도로 사용한다.
-  // 규칙: F1·F2(부모/조부모 공통 포함 2대 이내) = 절대 불가, F3 = 주의, F4 이상 = 안전.
-  const fLevel = Math.min(...common.map(c=>Math.min(c.genA, c.genB)));
   let level, title, detail;
-  if(sameParents.length>=2){
-    level='danger'; title='완전 형제자매(친남매) — F1';
-    detail='양쪽 부모가 모두 같습니다(F1). 절대 페어링하지 마세요.';
-  } else if(sameParents.length===1){
-    level='danger'; title='이복/이부 형제자매 — F1';
-    detail=`부모 중 한쪽(${sameParents[0].label})이 같습니다(F1). 절대 페어링하지 마세요.`;
-  } else if(fLevel<=2){
-    level='danger'; title=`근친 위험 — F${fLevel}`;
-    detail=`공통 조상까지 ${fLevel}대 이내로 가깝습니다(F1~F2급). 절대 페어링하지 마세요.`;
-  } else if(fLevel===3){
-    level='warning'; title='근친 주의 — F3';
-    detail='공통 조상까지 3대 거리입니다(F3급). 가능하면 다른 조합을 우선 고려하세요.';
+  if(direct){
+    level='danger'; title='직계 관계 — 교배 제외';
+    detail = `${direct.ancestor}(이)가 ${direct.descendant}의 ${direct.gen}대 위 직계 조상이에요. 근친계수와 별개로 교배 대상에서 제외하세요.`;
+  } else if(coi < COI_THRESHOLDS.cautionFrom){
+    level='safe'; title=`예상 후대 근친계수 ${fmtCoiPercent(coi)}%`;
+    detail = '설정 기준 이내';
+  } else if(coi < COI_THRESHOLDS.dangerFrom){
+    level='warning'; title=`예상 후대 근친계수 ${fmtCoiPercent(coi)}%`;
+    detail = `설정 기준(${fmtCoiPercent(COI_THRESHOLDS.cautionFrom)}% 이상)에 해당해요. 혈통과 몇 대 위까지의 계보를 더 확실히 확인한 뒤 결정하세요.`;
   } else {
-    level='safe'; title=`먼 혈통 — F${fLevel}`;
-    detail=`공통 조상까지 ${fLevel}대 이상 떨어져 있어(F4 이상) 실질적 근친 위험은 낮은 편입니다.`;
+    level='danger'; title=`예상 후대 근친계수 ${fmtCoiPercent(coi)}%`;
+    detail = `설정 기준(${fmtCoiPercent(COI_THRESHOLDS.dangerFrom)}% 이상)에 해당해요. 교배를 피하는 쪽을 권해요.`;
   }
-  common.sort((a,b)=>Math.min(a.genA,a.genB)-Math.min(b.genA,b.genB));
-  return { level, title, detail, common };
+  if(direct){ title += ` · 예상 후대 근친계수 ${fmtCoiPercent(coi)}%`; }
+  if(coi===0 && !direct){
+    if(unknownCount>0) assumptions.unshift('입력된 계보 기준 0% — 미확인 혈통 존재 (공통 조상이 확인되지 않았을 뿐, 혈연이 없다는 뜻은 아니에요).');
+    else assumptions.unshift('계보 끝까지 확인된 범위에서 공통 조상이 없어요.');
+  }
+  return { level, title, detail, coi, coiConfirmedOnly, direct, common: common.slice(0,6), commonHidden: Math.max(0, common.length-6),
+           confidence, assumptions, notes };
 }
 
 function levelIcon(level){
-  return {danger:'⚠️', warning:'⚠️', caution:'ℹ️', safe:'✅'}[level] || 'ℹ️';
+  return {danger:'⚠️', error:'⛔', warning:'⚠️', caution:'ℹ️', safe:'✅'}[level] || 'ℹ️';
 }
 function levelLabel(level){
-  return {danger:'위험', warning:'주의', caution:'참고', safe:'안전'}[level] || '';
+  return {danger:'위험', error:'선택 오류', warning:'주의', caution:'참고', safe:'안전'}[level] || '';
+}
+function generationWord(gen){
+  return gen===1 ? '부모' : (gen===2 ? '조부모' : (gen===3 ? '증조부모' : `${gen}대 위 조상`));
 }
 
 function renderBloodlineBanner(entA, entB){
   if(!entA || !entB) return '';
   const r = compareBloodline(entA, entB);
   if(!r) return '';
+  const nameA = entA.name||entA.morph||'A', nameB = entB.name||entB.morph||'B';
   let html = `<div class="bloodline-banner ${r.level}">
     <b>${levelIcon(r.level)} [${levelLabel(r.level)}] ${esc(r.title)}</b>
     ${esc(r.detail)}`;
+  if(r.level==='error'){ html += `</div>`; return html; }
   if(r.common && r.common.length){
-    const anyEstimated = r.common.some(c=>c.estimated);
-    html += `<ul>` + r.common.slice(0,5).map(c=>
-      `<li>공통 조상: <b>${esc(c.label)}</b>${c.estimated?' <span class="ped-tag">추정</span>':''} (${esc(entA.name||entA.morph||'A')}쪽 ${esc(kinshipLabel(c.genA,c.branchA))} / ${esc(entB.name||entB.morph||'B')}쪽 ${esc(kinshipLabel(c.genB,c.branchB))})</li>`
-    ).join('') + `</ul>`;
-    if(anyEstimated){
-      html += `<div style="font-size:11.5px;opacity:.85;margin-top:2px;">"추정" 표시는 직접 입력해두신 외부 혈통 참조를 근거로 한 추정치예요. 정확한 판단을 위해 분양처 혈통서도 함께 확인해주세요.</div>`;
-    }
+    html += `<ul>` + r.common.map(c=>{
+      const dist = c.genA===c.genB ? `양쪽 모두 ${c.genA}대 위(${generationWord(c.genA)})`
+        : `${esc(nameA)}쪽 ${c.genA}대 위 · ${esc(nameB)}쪽 ${c.genB}대 위`;
+      return `<li>공통 조상 <span style="font-weight:700;">${esc(c.label)}</span>${c.estimated?' <span class="ped-tag">추정</span>':''} — ${dist}</li>`;
+    }).join('');
+    if(r.commonHidden>0) html += `<li style="list-style:none;margin-left:-18px;opacity:.8;">외 공통 조상 ${r.commonHidden}마리 (계산에는 모두 반영)</li>`;
+    html += `</ul>`;
   }
+  const c = r.confidence;
+  html += `<div style="font-size:12px;margin-top:7px;line-height:1.55;">혈통 확인 수준: <span style="font-weight:700;">${esc(c.label)}</span><br>${esc(c.sideA)} · ${esc(c.sideB)}</div>`;
+  if(r.assumptions.length) html += `<div style="font-size:12px;margin-top:5px;line-height:1.55;">${r.assumptions.map(esc).join('<br>')}</div>`;
+  r.notes.forEach(t=>{ html += `<div style="font-size:12px;margin-top:5px;line-height:1.55;">※ ${esc(t)}</div>`; });
+  html += `<div style="font-size:11.5px;opacity:.85;margin-top:7px;line-height:1.5;">근친계수는 공통 조상에서 유래한 동일 대립유전자가 후대에서 짝을 이룰 확률을 나타냅니다. 기형·질병 발생률이나 건강 보장 수치가 아닙니다.<br>판정 기준(안전 ${fmtCoiPercent(COI_THRESHOLDS.cautionFrom)}% 미만 / 주의 ${fmtCoiPercent(COI_THRESHOLDS.cautionFrom)}% 이상 ${fmtCoiPercent(COI_THRESHOLDS.dangerFrom)}% 미만 / 위험 ${fmtCoiPercent(COI_THRESHOLDS.dangerFrom)}% 이상)은 앱 운영 기준이며, 크레스티드게코에서 검증된 건강 위험 임계값이 아니에요. ${esc(c.gensNote)}</div>`;
   html += `</div>`;
   return html;
 }
@@ -2823,6 +3002,8 @@ function openIndividualForm(id){
         <button type="button" class="btn btn-ghost btn-block" style="margin-bottom:10px;" onclick="reissueIndividualId('${data.id}')">ID 다시 발급하기 (참조 자동 갱신)</button>
       ` : ''}
 
+      <label class="field full" style="flex-direction:row;align-items:center;gap:8px;margin-bottom:4px;"><input type="checkbox" name="lineageFounder" value="1" ${data.lineageFounder?'checked':''} style="width:auto;"><span>부모 없음 확정 (창립·비혈연 개체)</span></label>
+      <div class="readonly-note" style="margin-top:0;">부모를 '모르는' 게 아니라, 이 개체의 위 계보가 없고 다른 개체와 혈연이 없다고 확인된 경우에만 체크하세요. 체크하지 않으면 '부모 미상(미확인 혈통)'으로 보고 근친계수 결과에 표시해요.</div>
       <div class="form-divider">부(父) 정보</div>
       ${collapsibleSection('editSire', (data.sireName?esc(data.sireName)+' 정보 수정':'부 정보 입력하기'), `
       <label class="field full"><span>기존 개체에서 선택</span>
@@ -2913,6 +3094,7 @@ async function saveIndividual(id){
   obj.damHet = readHetValue('dam');
   obj.damPatterns = readChipGroup('damPatterns');
   obj.damColors = readChipGroup('damColors');
+  obj.lineageFounder = obj.lineageFounder==='1';
   const nw = parseFloat(obj.newWeight);
   delete obj.newWeight;
   if(id){
@@ -3165,6 +3347,7 @@ function renderMatingCard(m){
   if(dam && sire){
     const r = compareBloodline(dam, sire);
     if(r.level==='danger') riskChip = `<span class="chip danger">혈통 위험</span>`;
+    else if(r.level==='error') riskChip = `<span class="chip danger">계보 오류</span>`;
     else if(r.level==='warning') riskChip = `<span class="chip alt">혈통 주의</span>`;
   }
   const nextNum = nextClutchNum(m);
@@ -3974,7 +4157,7 @@ async function deleteExternalLineageRef(id){
 function renderPedigreeTab(){
   let html = `<div class="section-head"><h2>혈통(근친) 검사</h2></div>
   <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-top:-4px;">
-  페어링을 고려 중인 두 개체를 선택하면, 등록된 부모 정보를 거슬러 올라가 공통 조상이 있는지 확인해드려요.
+  페어링을 고려 중인 두 개체를 선택하면, 등록된 부모 정보를 거슬러 올라가, 이 둘을 교배했을 때 태어날 후대의 예상 근친계수(COI)를 계산해드려요.
   </p>
   <div class="pc-select-row">
     <div style="display:flex;align-items:center;gap:4px;min-width:0;">
@@ -4001,7 +4184,7 @@ function renderPedigreeTab(){
     html += `<div class="empty-state" style="padding:36px 20px;"><div class="dotrow"><span></span><span></span><span></span><span></span><span></span></div><p>두 개체를 선택하면 결과가 표시됩니다.</p></div>`;
   }
 
-  html += `<div class="disclaimer">이 검사는 등록된 부모 정보(개체 ID 연결 또는 이름+출신 업체)를 근거로 한 참고용 계산입니다. 외부에서 영입한 개체의 조상 정보가 시스템에 없으면 그 위 세대는 확인할 수 없어요. 정확한 판단을 위해 분양처의 혈통서도 함께 확인해주세요.</div>`;
+  html += `<div class="disclaimer">이 검사는 등록된 부모 정보(개체 ID 연결 또는 이름+출신 업체)를 근거로 한 참고용 계산입니다. 조상 정보가 없는 부분은 '서로 무관한 비근친 개체'로 가정해 계산하므로, 미확인 혈통이 있으면 실제 근친계수는 더 높을 수 있어요. 정확한 판단을 위해 분양처의 혈통서도 함께 확인해주세요.</div>`;
 
   html += collapsibleSection('extLineageRefs', '외부 혈통 참조 추가 (등록 안 된 조상 연결하기)', `
     <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.6;margin:0 0 10px;">부모 정보가 없어서 계보가 끊기는 개체라도, "이 개체(또는 이름만 아는 조상)가 [유명 조상]의 몇 세손이다"라는 걸 알고 있으면 여기 적어두세요. 위 검사에 자동으로 반영돼요(단, 추정치예요).</p>
