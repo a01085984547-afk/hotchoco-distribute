@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-11-24 22:31 KST -->
+<!-- BUILD_VERSION: 2026-11-24 22:36 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -1974,6 +1974,15 @@ function refreshFilterToggle(kind){
   if(!btn) return;
   btn.textContent = filterToggleLabel(kind);
   btn.classList.toggle('chip-selected', activeFilterCount(kind)>0);
+  const clr = document.getElementById(kind+'-filter-clear');
+  if(clr) clr.style.display = activeFilterCount(kind)>0 ? '' : 'none';
+}
+/* 모프·헷·성별 등 선택해 둔 필터를 한 번에 전부 해제 (검색어와 정렬은 그대로) */
+function clearAllMf(kind){
+  Object.values(mfState[kind]).forEach(a=>{ a.length = 0; });
+  mfOpenId = null;
+  mfRefreshAll(kind);
+  mfUpdateList(kind);
 }
 function toggleListFilters(kind){
   listFiltersOpen[kind] = !listFiltersOpen[kind];
@@ -2118,6 +2127,7 @@ function renderIndividualList(){
     </div>
     <div class="searchbar">
       <button type="button" id="individual-filter-toggle" class="chip-toggle ${activeFilterCount('individual')?'chip-selected':''}" style="flex:1;padding:6px 10px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);" onclick="toggleListFilters('individual')">${filterToggleLabel('individual')}</button>
+      <button type="button" id="individual-filter-clear" class="chip-toggle" style="flex:none;padding:6px 12px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);display:${activeFilterCount('individual')?'':'none'};" onclick="clearAllMf('individual')">전체 해제</button>
     </div>
     <div id="individual-filter-panel" style="display:${listFiltersOpen.individual?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
       <select onchange="setIndividualSort(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
@@ -2269,6 +2279,7 @@ function renderHatchlingList(){
     <div class="searchbar">${searchBoxHtml('ID·모프·부모 이름으로 검색', listFilters.hatchling, 'setHatchlingFilter')}</div>
     <div class="searchbar">
       <button type="button" id="hatchling-filter-toggle" class="chip-toggle ${activeFilterCount('hatchling')?'chip-selected':''}" style="flex:1;padding:6px 10px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);" onclick="toggleListFilters('hatchling')">${filterToggleLabel('hatchling')}</button>
+      <button type="button" id="hatchling-filter-clear" class="chip-toggle" style="flex:none;padding:6px 12px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);display:${activeFilterCount('hatchling')?'':'none'};" onclick="clearAllMf('hatchling')">전체 해제</button>
     </div>
     <div id="hatchling-filter-panel" style="display:${listFiltersOpen.hatchling?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
       <select onchange="setHatchlingSort(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface);color:var(--ink-soft);">
@@ -5574,7 +5585,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-11-24 22:31 KST';
+const APP_BUILD_VERSION = '2026-11-24 22:36 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
