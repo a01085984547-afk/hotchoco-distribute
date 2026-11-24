@@ -539,6 +539,12 @@ function applyIndividualIdMap(st, idMap){
     if(h.sireId && idMap[h.sireId]) h.sireId = idMap[h.sireId];
     if(h.promotedToId && idMap[h.promotedToId]) h.promotedToId = idMap[h.promotedToId];
   });
+  (st.externalLineageRefs||[]).forEach(r=>{
+    if(r.subjectKey && r.subjectKey.startsWith('IND:')){
+      const o = r.subjectKey.slice(4);
+      if(idMap[o]) r.subjectKey = 'IND:'+idMap[o];
+    }
+  });
 }
 
 function migrateIndividualIdsToGenderPrefix(st){
@@ -3099,7 +3105,22 @@ async function saveIndividual(id){
   delete obj.newWeight;
   if(id){
     const item = state.individuals.find(i=>i.id===id);
+    const oldGender = item.gender;
     Object.assign(item, obj);
+    /* 성별이 바뀌면(예: 암컷인 줄 알았는데 수컷) 성별 접두사가 붙은 고유번호도 새 성별 번호로 바꾼다 */
+    if(oldGender !== item.gender && item.id.startsWith(genderIdPrefix(oldGender))){
+      const oldId = item.id;
+      const newId = nextEntityId(genderIdPrefix(item.gender), state.individuals.filter(i=>i!==item), 4);
+      const linked = state.matings.filter(m=>m.sireId===oldId||m.damId===oldId).length
+                   + state.clutches.filter(c=>c.sireId===oldId||c.damId===oldId).length
+                   + state.hatchlings.filter(h=>h.sireId===oldId||h.damId===oldId).length
+                   + state.individuals.filter(i=>i!==item && (i.sireId===oldId||i.damId===oldId)).length;
+      const linkNote = linked ? `\n\n※ 이미 부모·메이팅·클러치로 연결된 기록이 ${linked}건 있어요. 연결은 새 번호로 이어지지만, 그 기록 안의 부/모 역할은 그대로예요.` : '';
+      if(confirm(`성별이 바뀌었어요. 고유번호도 ${oldId} → ${newId} 로 바꿀까요?\n(이 개체를 연결해둔 부모·메이팅·클러치·혈통 기록도 새 번호로 같이 바뀌어요)${linkNote}\n\n[취소]를 누르면 번호는 그대로 두고 성별만 바뀌어요.`)){
+        applyIndividualIdMap(state, { [oldId]: newId });
+        ['a','b'].forEach(sd=>{ if(pedigreeSel[sd]==='IND:'+oldId) pedigreeSel[sd]='IND:'+newId; });
+      }
+    }
   } else {
     if(!isNaN(nw) && nw>0) obj.weightLog = [{ id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), date:todayISO(), grams:nw }];
     obj.id = nextEntityId(genderIdPrefix(obj.gender), state.individuals, 4);
