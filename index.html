@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!-- BUILD_VERSION: 2026-09-01 22:10 KST -->
+<!-- BUILD_VERSION: 2026-11-24 22:31 KST -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>HotChocoCre</title>
@@ -3346,6 +3346,27 @@ function donutChartHtml(title, entries){
     <div>${legend}</div>
   </div>`;
 }
+/* 이 조합에서 나온 애들의 성비 (수컷·암컷·미구분을 한 줄 막대로) */
+function genderRatioHtml(kids){
+  const defs = [
+    { key:'수컷', color:'#2F5C8A' },
+    { key:'암컷', color:'#B04A6A' },
+    { key:'미구분', color:'#2F7D4F' }
+  ];
+  const total = kids.length;
+  if(total===0) return '';
+  const counts = defs.map(d=>({ ...d, count: kids.filter(h=>(h.gender||'미구분')===d.key).length }));
+  const bar = counts.filter(c=>c.count>0).map(c=>`<div style="width:${c.count/total*100}%;background:${c.color};"></div>`).join('');
+  const legend = counts.filter(c=>c.count>0).map(c=>`<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;white-space:nowrap;"><span style="width:10px;height:10px;border-radius:50%;background:${c.color};"></span><span style="font-size:13px;font-weight:600;">${c.key} ${c.count}마리</span><span style="font-size:12px;color:var(--ink-faint);">${Math.round(c.count/total*100)}%</span></span>`).join('');
+  const m = counts[0].count, f = counts[1].count, u = counts[2].count;
+  const ratioText = (m+f>0) ? `수컷 : 암컷 = ${m} : ${f}${u?` (미구분 ${u}마리 제외)`:''}` : '아직 성별이 구분된 애들이 없어요';
+  return `<div style="margin:4px 0 12px;">
+    <div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;">성비</div>
+    <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--border);margin-bottom:8px;">${bar}</div>
+    <div style="line-height:1.9;">${legend}</div>
+    <div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">${ratioText}</div>
+  </div>`;
+}
 function renderMatingOffspringCharts(m){
   const clutchIds = new Set(clutchesOfMating(m.id).map(c=>c.id));
   const kids = state.hatchlings.filter(h=>clutchIds.has(h.clutchId));
@@ -3357,7 +3378,7 @@ function renderMatingOffspringCharts(m){
   };
   /* 모프와 헷을 합쳐서 한 그래프로: "릴리화이트 100% Het 아잔틱"처럼 실제 판매·브리딩에 쓰는 이름 단위로 센다 */
   const entries = tally(h=>formatMorphFull(h.morph||'모프 미정', h.morphHet).main);
-  const content = donutChartHtml('모프별 (헷 포함)', entries);
+  const content = donutChartHtml('모프별 (헷 포함)', entries) + genderRatioHtml(kids);
   return collapsibleSection('matingKids_'+m.id, `이 조합에서 나온 애들 (${kids.length}마리)`, content, true);
 }
 
@@ -5553,7 +5574,7 @@ async function exportCardAsPDF(data, opts){
    초기화
 ===================================================================== */
 /* ---------------- 새 버전 확인(캐시 우회) ---------------- */
-const APP_BUILD_VERSION = '2026-09-01 22:10 KST';
+const APP_BUILD_VERSION = '2026-11-24 22:31 KST';
 async function checkForNewVersion(){
   try{
     const res = await fetch(location.href, { cache: 'no-store' });
